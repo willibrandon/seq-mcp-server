@@ -12,18 +12,24 @@ public interface ICredentialStore
 public sealed class FileCredentialStore : ICredentialStore
 {
     private readonly string _path;
+    private readonly bool _enableWatcher;
     private volatile Dictionary<string,string> _map = new();
 
-    public FileCredentialStore(IConfiguration cfg)
+    public FileCredentialStore(IConfiguration cfg, bool enableWatcher = true)
     {
         _path = cfg["CredentialFile"] ?? "secrets.json";
+        _enableWatcher = enableWatcher;
         Reload();
-        var watcher = new FileSystemWatcher(Path.GetDirectoryName(_path)!)
+        
+        if (_enableWatcher && Directory.Exists(Path.GetDirectoryName(_path)))
         {
-            Filter = Path.GetFileName(_path),
-            EnableRaisingEvents = true
-        };
-        watcher.Changed += (_,_) => Reload();
+            var watcher = new FileSystemWatcher(Path.GetDirectoryName(_path)!)
+            {
+                Filter = Path.GetFileName(_path),
+                EnableRaisingEvents = true
+            };
+            watcher.Changed += (_,_) => Reload();
+        }
     }
 
     public string GetApiKey(string workspace) =>

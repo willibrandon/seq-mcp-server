@@ -31,22 +31,31 @@ public static class SeqTools
         return events;
     }
 
-    [McpServerTool, Description("Stream live events from Seq")]
-    public static async IAsyncEnumerable<EventEntity> SeqStream(
+    [McpServerTool, Description("Stream live events from Seq (returns first few events)")]
+    public static async Task<List<EventEntity>> SeqStream(
         SeqConnectionFactory fac,
         string? filter = null,
+        int count = 10,
         string? workspace = null,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         var conn = fac.Create(workspace);
+        var events = new List<EventEntity>();
+        
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        
         await foreach (var evt in conn.Events.StreamAsync(
             null,
             null,
             filter ?? ""
-        ).WithCancellation(ct))
+        ).WithCancellation(combinedCts.Token))
         {
-            yield return evt;
+            events.Add(evt);
+            if (events.Count >= count) break;
         }
+        
+        return events;
     }
 
     [McpServerTool, Description("List signals (read-only)")]
@@ -56,6 +65,6 @@ public static class SeqTools
         CancellationToken ct = default)
     {
         var conn = fac.Create(workspace);
-        return await conn.Signals.ListAsync(cancellationToken: ct);
+        return await conn.Signals.ListAsync(shared: true, cancellationToken: ct);
     }
 }
