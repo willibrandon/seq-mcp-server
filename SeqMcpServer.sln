@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeqMcpServer", "SeqMcpServer\SeqMcpServer.csproj", "{90D42966-BC7E-4765-9C1E-A2D8DD6B481E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeqMcpServer.Tests", "SeqMcpServer.Tests\SeqMcpServer.Tests.csproj", "{8B802E4B-CFDE-4523-A22A-45A51781D001}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{90D42966-BC7E-4765-9C1E-A2D8DD6B481E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{90D42966-BC7E-4765-9C1E-A2D8DD6B481E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{90D42966-BC7E-4765-9C1E-A2D8DD6B481E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B802E4B-CFDE-4523-A22A-45A51781D001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B802E4B-CFDE-4523-A22A-45A51781D001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B802E4B-CFDE-4523-A22A-45A51781D001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B802E4B-CFDE-4523-A22A-45A51781D001}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -1,41 +1,49 @@
+using SeqMcpServer.Services;
+using Prometheus;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddSingleton<ICredentialStore, FileCredentialStore>();
+builder.Services.AddSingleton<SeqConnectionFactory>();
+builder.Configuration["CredentialFile"] = "secrets.json";
+
+// Add logging
+builder.Services.AddLogging(b => b.AddSimpleConsole());
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+// Seq version guard
+var minVer = Version.Parse(builder.Configuration["SeqVersion:Min"]!);
+var maxVer = Version.Parse(builder.Configuration["SeqVersion:Max"]!);
 
-app.UseHttpsRedirection();
-
-var summaries = new[]
+app.Lifetime.ApplicationStarted.Register(async () =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    try
+    {
+        var conn = app.Services.GetRequiredService<SeqConnectionFactory>().Create();
+        var root = await conn.Client.GetRootAsync();
+        var serverInfo = await conn.Client.GetAsync<dynamic>(root, "");
+        var ver = Version.Parse((string)serverInfo.Version);
+        if (ver < minVer || ver > maxVer)
+            app.Logger.LogWarning("Seq version {V} outside supported range", ver);
+    }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "Unable to retrieve Seq version"); }
+});
 
-app.MapGet("/weatherforecast", () =>
+// Add Prometheus metrics endpoint
+app.MapMetrics();
+
+app.MapGet("/healthz", async (SeqConnectionFactory fac) =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    try
+    {
+        await fac.Create().Signals.ListAsync();
+        return Results.Ok(new { status = "ok" });
+    }
+    catch
+    {
+        return Results.StatusCode(503);
+    }
+});
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

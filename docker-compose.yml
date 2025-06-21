@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  seq:
+    image: datalust/seq:latest
+    ports: [ "5341:80" ]
+
+  mcp:
+    build: .
+    volumes:
+      - ./secrets.json:/app/secrets.json:ro
+    environment:
+      - Seq:ServerUrl=http://seq:80
+    ports: [ "8080:80" ]
