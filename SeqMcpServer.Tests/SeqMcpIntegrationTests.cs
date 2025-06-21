@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SeqMcpServer.Services;
+using Serilog;
 
 namespace SeqMcpServer.Tests;
 
@@ -23,6 +24,15 @@ public class SeqMcpIntegrationTests : IClassFixture<SeqMcpIntegrationTests.SeqMc
 
     public async Task InitializeAsync()
     {
+        // Configure Serilog for tests
+        Log.Logger = new LoggerConfiguration()
+            .ReadFrom.Configuration(new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json", optional: true)
+                .Build())
+            .CreateLogger();
+
+        Log.Information("Starting SeqMcpIntegrationTests initialization");
+
         // Start Seq container - use stable version and proper configuration
         _seqContainer = new ContainerBuilder()
             .WithImage("datalust/seq:2024.3")  // Use specific stable version
@@ -39,7 +49,8 @@ public class SeqMcpIntegrationTests : IClassFixture<SeqMcpIntegrationTests.SeqMc
         var hostname = _seqContainer.Hostname;
         var port = _seqContainer.GetMappedPublicPort(80);
         _seqUrl = $"http://{hostname}:{port}";
-        Console.WriteLine($"Seq container URL: {_seqUrl} (hostname: {hostname}, API port: {port})");
+        Log.Information("Seq container started at {SeqUrl} (hostname: {Hostname}, API port: {Port})", 
+            _seqUrl, hostname, port);
 
         // Wait for Seq API to be ready on port 80 - Seq can take time to initialize
         using var httpClient = new HttpClient();
@@ -52,19 +63,21 @@ public class SeqMcpIntegrationTests : IClassFixture<SeqMcpIntegrationTests.SeqMc
         {
             try
             {
-                Console.WriteLine($"Testing Seq API readiness at: {_seqUrl}/api (attempt {++retryCount})");
+                Log.Debug("Testing Seq API readiness at {SeqApiUrl} (attempt {AttemptNumber})", 
+                    $"{_seqUrl}/api", ++retryCount);
                 var response = await httpClient.GetAsync($"{_seqUrl}/api");
                 if (response.IsSuccessStatusCode)
                 {
                     seqReady = true;
-                    Console.WriteLine($"Seq API is ready after {retryCount} attempts!");
+                    Log.Information("Seq API is ready after {AttemptCount} attempts at {SeqApiUrl}", 
+                        retryCount, $"{_seqUrl}/api");
                     break;
                 }
-                Console.WriteLine($"Seq API not ready, status: {response.StatusCode}");
+                Log.Debug("Seq API not ready, status: {HttpStatusCode}", response.StatusCode);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Seq API connection failed: {ex.Message}");
+                Log.Debug("Seq API connection failed: {ErrorMessage}", ex.Message);
             }
             
             // Progressive delay: start with 1s, then 2s, then 3s for subsequent attempts

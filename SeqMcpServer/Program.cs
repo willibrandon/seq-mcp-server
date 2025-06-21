@@ -1,37 +1,50 @@
 using SeqMcpServer.Services;
 using Prometheus;
 using ModelContextProtocol.Server;
+using Serilog;
 
-// Check if we should run as MCP server (stdio) or web server
-if (args.Contains("--mcp") || Environment.GetEnvironmentVariable("MCP_MODE") == "true")
+// Configure Serilog early for bootstrap
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
+
+try
 {
-    // Run as MCP server with stdio transport
-    var mcpBuilder = Host.CreateApplicationBuilder(args);
+    Log.Information("Starting SeqMcpServer");
+
+    // Check if we should run as MCP server (stdio) or web server
+    if (args.Contains("--mcp") || Environment.GetEnvironmentVariable("MCP_MODE") == "true")
+    {
+        // Run as MCP server with stdio transport
+        var mcpBuilder = Host.CreateApplicationBuilder(args);
+        
+        // Configure Serilog from configuration  
+        mcpBuilder.Services.AddSerilog(configuration => configuration
+            .ReadFrom.Configuration(mcpBuilder.Configuration));
+        
+        mcpBuilder.Services.AddSingleton<ICredentialStore, FileCredentialStore>();
+        mcpBuilder.Services.AddSingleton<SeqConnectionFactory>();
+        mcpBuilder.Configuration["CredentialFile"] = "secrets.json";
+        
+        mcpBuilder.Services
+            .AddMcpServer()
+            .WithStdioServerTransport()
+            .WithToolsFromAssembly();
+        
+        await mcpBuilder.Build().RunAsync();
+        return;
+    }
     
-    mcpBuilder.Services.AddSingleton<ICredentialStore, FileCredentialStore>();
-    mcpBuilder.Services.AddSingleton<SeqConnectionFactory>();
-    mcpBuilder.Configuration["CredentialFile"] = "secrets.json";
-    
-    mcpBuilder.Services
-        .AddMcpServer()
-        .WithStdioServerTransport()
-        .WithToolsFromAssembly();
-    
-    mcpBuilder.Services.AddLogging(b => b.AddSimpleConsole());
-    
-    await mcpBuilder.Build().RunAsync();
-}
-else
-{
     // Run as web application
     var builder = WebApplication.CreateBuilder(args);
+
+    // Configure Serilog from configuration
+    builder.Host.UseSerilog((context, configuration) => configuration
+        .ReadFrom.Configuration(context.Configuration));
 
     builder.Services.AddSingleton<ICredentialStore, FileCredentialStore>();
     builder.Services.AddSingleton<SeqConnectionFactory>();
     builder.Configuration["CredentialFile"] = "secrets.json";
-
-    // Add logging
-    builder.Services.AddLogging(b => b.AddSimpleConsole());
 
     var app = builder.Build();
 
@@ -46,11 +59,17 @@ else
             var conn = app.Services.GetRequiredService<SeqConnectionFactory>().Create();
             var root = await conn.Client.GetRootAsync();
             var ver = Version.Parse(root.Version);
-            app.Logger.LogInformation("Connected to Seq version {Version}", ver);
+            Log.Information("Connected to Seq {ServerUrl} version {SeqVersion}", 
+                conn.Client.ServerUrl, ver);
             if (ver < minVer || ver > maxVer)
-                app.Logger.LogWarning("Seq version {Version} outside supported range {MinVersion}-{MaxVersion}", ver, minVer, maxVer);
+                Log.Warning("Seq version {SeqVersion} outside supported range {MinVersion}-{MaxVersion}", 
+                    ver, minVer, maxVer);
         }
-        catch (Exception ex) { app.Logger.LogWarning(ex, "Unable to retrieve Seq version"); }
+        catch (Exception ex) 
+        { 
+            Log.Warning(ex, "Unable to retrieve Seq version from {ServerUrl}", 
+                app.Services.GetRequiredService<SeqConnectionFactory>().Create().Client.ServerUrl); 
+        }
     });
 
     // Add Prometheus metrics endpoint
@@ -70,6 +89,14 @@ else
     });
 
     app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "SeqMcpServer terminated unexpectedly");
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
 }
 
 public partial class Program { }
