@@ -110,7 +110,7 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         {
             Name = "Seq MCP Server Test",
             Command = "dotnet",
-            Arguments = ["../../../../SeqMcpServer/bin/Debug/net9.0/SeqMcpServer.dll", $"--Seq:ServerUrl={_seqUrl}", "--SeqVersion:Min=2024.1", "--SeqVersion:Max=2025.1"],
+            Arguments = ["../../../../SeqMcpServer/bin/Debug/net9.0/SeqMcpServer.dll", $"--Seq:ServerUrl={_seqUrl}", "--SeqVersion:Min=2024.1", "--SeqVersion:Max=2025.2"],
             EnvironmentVariables = new Dictionary<string, string?>
             {
                 ["SEQ_SERVER_URL"] = _seqUrl,
