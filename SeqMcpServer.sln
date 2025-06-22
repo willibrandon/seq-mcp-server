@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeqMcpServer", "SeqMcpServer\SeqMcpServer.csproj", "{90D42966-BC7E-4765-9C1E-A2D8DD6B481E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeqMcpServer", "src\SeqMcpServer\SeqMcpServer.csproj", "{90D42966-BC7E-4765-9C1E-A2D8DD6B481E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeqMcpServer.Tests", "SeqMcpServer.Tests\SeqMcpServer.Tests.csproj", "{8B802E4B-CFDE-4523-A22A-45A51781D001}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeqMcpServer.Tests", "tests\SeqMcpServer.Tests\SeqMcpServer.Tests.csproj", "{8B802E4B-CFDE-4523-A22A-45A51781D001}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
