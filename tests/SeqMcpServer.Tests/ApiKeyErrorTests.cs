@@ -62,7 +62,8 @@ public class ApiKeyErrorTests : IAsyncLifetime
         var hasAuthError = textContent.Contains("401") ||
                           textContent.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
                           textContent.Contains("authentication", StringComparison.OrdinalIgnoreCase);
-        
+
+        Assert.True(textContent.Length < 1000);
         Assert.True(hasAuthError, "Expected clear authentication error message");
     }
 }
