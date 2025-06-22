@@ -74,24 +74,15 @@ public class McpToolsIntegrationTests : IAsyncLifetime
             throw new InvalidOperationException($"MCP Tests - Seq API did not become ready at {_seqUrl}/api");
         }
 
-        // Create test credentials file
-        var tempSecretsFile = Path.GetTempFileName();
-        File.WriteAllText(tempSecretsFile, """{ "default": "" }""");  // Empty API key for anonymous access
+        // Set environment variables for the test
+        Environment.SetEnvironmentVariable("SEQ_SERVER_URL", _seqUrl);
+        Environment.SetEnvironmentVariable("SEQ_API_KEY", "test-api-key");
 
-        // Start MCP server
+        // Start MCP server (for in-process testing if needed)
         var builder = Host.CreateDefaultBuilder();
         builder.ConfigureServices(services =>
         {
-            services.AddSingleton<ICredentialStore>(provider =>
-            {
-                var config = new ConfigurationBuilder()
-                    .AddInMemoryCollection(new[]
-                    {
-                        new KeyValuePair<string, string?>("CredentialFile", tempSecretsFile)
-                    })
-                    .Build();
-                return new FileCredentialStore(config, enableWatcher: false);
-            });
+            services.AddSingleton<ICredentialStore, EnvironmentCredentialStore>();
             
             services.AddSingleton<SeqConnectionFactory>(provider =>
             {
@@ -111,10 +102,6 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         _mcpServerHost = builder.Build();
         await _mcpServerHost.StartAsync();
 
-        // Create temporary secrets file for the MCP server
-        var tempSecretsFileForServer = Path.GetTempFileName();
-        File.WriteAllText(tempSecretsFileForServer, """{ "default": "test-api-key" }""");
-        
         // Create MCP client transport
         var serverExecutable = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "SeqMcpServer.exe" : "SeqMcpServer";
         var serverPath = Path.Combine("../../../SeqMcpServer/bin/Debug/net9.0", serverExecutable);
@@ -123,7 +110,12 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         {
             Name = "Seq MCP Server Test",
             Command = "dotnet",
-            Arguments = ["../../../../SeqMcpServer/bin/Debug/net9.0/SeqMcpServer.dll", $"--Seq:ServerUrl={_seqUrl}", $"--CredentialFile={tempSecretsFileForServer}", "--SeqVersion:Min=2024.1", "--SeqVersion:Max=2025.1"]
+            Arguments = ["../../../../SeqMcpServer/bin/Debug/net9.0/SeqMcpServer.dll", $"--Seq:ServerUrl={_seqUrl}", "--SeqVersion:Min=2024.1", "--SeqVersion:Max=2025.1"],
+            EnvironmentVariables = new Dictionary<string, string?>
+            {
+                ["SEQ_SERVER_URL"] = _seqUrl,
+                ["SEQ_API_KEY"] = "test-api-key"
+            }
         });
         
         _mcpClient = await McpClientFactory.CreateAsync(clientTransport);

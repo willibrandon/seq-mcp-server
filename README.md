@@ -1,35 +1,116 @@
 # Seq MCP Server
-Thin wrapper exposing Seq logs to Model Context Protocol.
 
-## Quick start
+A Model Context Protocol (MCP) server that provides tools for searching and streaming events from Seq.
+
+## Quick Start
+
+### Development Environment
+
 ```bash
+# Clone the repository
 git clone https://github.com/your-org/seq-mcp-server
 cd seq-mcp-server
-# Set your Seq API key in secrets.json
-echo '{ "default": "YOUR_SEQ_API_KEY" }' > secrets.json
-docker compose up
+
+# Setup development environment (fully automated)
+# PowerShell (Windows)
+./scripts/setup-dev.ps1
+
+# Bash (Linux/Mac)
+./scripts/setup-dev.sh
+
+# Build and run the MCP server
+dotnet build
+dotnet run --project SeqMcpServer
+```
+
+The setup script automatically:
+- Starts a Seq container on ports 15341/18081
+- Configures authentication and creates an API key
+- Sets up environment variables
+- Creates a `.env` file for the application
+
+### Production
+
+```bash
+# Set environment variables
+export SEQ_SERVER_URL="http://your-seq-server:5341"
+export SEQ_API_KEY="your-api-key"
+
+# Run the MCP server
+dotnet run --project SeqMcpServer --configuration Release
 ```
 
 ## MCP Tools
 
-- `seq_search` - Search Seq events with filter
-- `seq_stream` - Stream live events from Seq  
-- `signal_list` - List available signals
+The following tools are available through the MCP protocol:
+
+- **`SeqSearch`** - Search Seq events with filters
+  - Parameters: `filter`, `count`, `workspace` (optional)
+  - Returns: List of matching events
+
+- **`SeqStream`** - Stream live events from Seq (5-second timeout)
+  - Parameters: `filter` (optional), `count`, `workspace` (optional)
+  - Returns: List of recent events
+
+- **`SignalList`** - List available signals
+  - Parameters: `shared`, `own`, `workspace` (optional)
+  - Returns: List of signals
 
 ## Configuration
 
-Set your Seq API key in `secrets.json`:
-```json
-{
-  "default": "YOUR_SEQ_API_KEY",
-  "ops": "YOUR_OPS_API_KEY"
-}
+The Seq MCP Server uses environment variables for configuration:
+
+- `SEQ_SERVER_URL`: URL of your Seq server (defaults to `http://localhost:5341`)
+- `SEQ_API_KEY`: API key for accessing Seq (required)
+- `SEQ_API_KEY_<WORKSPACE>`: Optional workspace-specific API keys (e.g., `SEQ_API_KEY_PRODUCTION`)
+
+### Workspace Support
+
+You can configure different API keys for different workspaces:
+
+```bash
+export SEQ_API_KEY="default-key"
+export SEQ_API_KEY_PRODUCTION="production-key"
+export SEQ_API_KEY_STAGING="staging-key"
 ```
 
-## Health Check
+## Development
 
-Visit `http://localhost:8080/healthz` to check server status.
+### Prerequisites
 
-## Metrics
+- .NET 9.0 SDK
+- Docker (for running Seq locally)
 
-Prometheus metrics available at `http://localhost:8080/metrics`.
+### Running Tests
+
+```bash
+dotnet test
+```
+
+### Development
+
+The `scripts` folder contains automated setup scripts:
+
+- **`setup-dev.ps1` / `setup-dev.sh`**: Automatically configures your development environment
+  - Starts Seq container with authentication
+  - Handles initial password setup
+  - Creates development API key
+  - Sets environment variables
+  - Creates `.env` file for the application
+  
+- **`teardown-dev.ps1` / `teardown-dev.sh`**: Cleans up the development environment
+  - Stops and removes containers
+  - Clears environment variables
+
+For detailed development setup, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## Architecture
+
+This is a pure MCP server implementation that:
+- Runs as a stdio-based service (no web server)
+- Communicates via JSON-RPC over standard input/output
+- Does not log to console to avoid interfering with MCP communication
+
+## License
+
+[Your License Here]

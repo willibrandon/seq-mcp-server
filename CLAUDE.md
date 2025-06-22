@@ -4,6 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+### Development Environment Setup
+```bash
+# Setup development environment (starts Seq container, creates API key)
+# PowerShell
+./scripts/setup-dev.ps1
+
+# Bash
+./scripts/setup-dev.sh
+
+# Teardown development environment
+# PowerShell
+./scripts/teardown-dev.ps1
+
+# Bash
+./scripts/teardown-dev.sh
+```
+
 ### Build and Run
 ```bash
 # Restore dependencies
@@ -11,6 +28,10 @@ dotnet restore
 
 # Build the project
 dotnet build
+
+# Set environment variables (required)
+export SEQ_SERVER_URL="http://localhost:5341"
+export SEQ_API_KEY="your-api-key"
 
 # Run the application (MCP server mode)
 dotnet run --project SeqMcpServer
@@ -59,16 +80,18 @@ The application runs as a Model Context Protocol (MCP) server using stdio transp
 - `SignalList`: List available signals (read-only)
 
 **Services**:
-- `FileCredentialStore` (Services/FileCredentialStore.cs): Manages API keys from `secrets.json` with hot-reload
+- `EnvironmentCredentialStore` (Services/EnvironmentCredentialStore.cs): Manages API keys from environment variables
 - `SeqConnectionFactory` (Services/SeqConnectionFactory.cs): Creates Seq API connections per workspace
 
 **Configuration**:
-- API keys stored in `secrets.json` (workspace → API key mapping)
-- Seq server URL configured in `appsettings.json`
+- API keys provided via environment variables:
+  - `SEQ_API_KEY`: Default API key
+  - `SEQ_API_KEY_<WORKSPACE>`: Workspace-specific API keys (optional)
+- Seq server URL via `SEQ_SERVER_URL` environment variable or `appsettings.json`
 - Version constraints: Min 2024.1, Max 2025.1
 
 ### Testing Strategy
-- Unit tests for core services (e.g., FileCredentialStoreTests)
+- Unit tests for core services (e.g., EnvironmentCredentialStoreTests)
 - Integration tests using Testcontainers to spin up real Seq instances
 - Tests located in `SeqMcpServer.Tests` project
 

@@ -2,7 +2,74 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SeqMcpServer.Services;
-using ModelContextProtocol.Server;
+
+// Load environment variables from .env file if it exists
+// Try multiple strategies to find the .env file
+string? envPath = null;
+
+// Strategy 1: Check current directory
+if (File.Exists(".env"))
+{
+    envPath = Path.GetFullPath(".env");
+}
+// Strategy 2: Walk up from current directory to find .env
+else
+{
+    var currentDir = new DirectoryInfo(Directory.GetCurrentDirectory());
+    while (currentDir != null && envPath == null)
+    {
+        var possibleEnvPath = Path.Combine(currentDir.FullName, ".env");
+        if (File.Exists(possibleEnvPath))
+        {
+            envPath = possibleEnvPath;
+            break;
+        }
+        
+        // Stop if we find a .sln file (we've reached the solution root)
+        if (currentDir.GetFiles("*.sln").Any())
+        {
+            break;
+        }
+        
+        currentDir = currentDir.Parent;
+    }
+}
+
+// Strategy 3: Check common locations relative to the executable
+if (envPath == null)
+{
+    var baseDir = AppContext.BaseDirectory;
+    var possiblePaths = new[]
+    {
+        Path.Combine(baseDir, ".env"),
+        Path.Combine(baseDir, "..", "..", "..", ".env"),
+        Path.Combine(baseDir, "..", "..", "..", "..", ".env"),
+        Path.Combine(baseDir, "..", "..", "..", "..", "..", ".env")
+    };
+    
+    foreach (var path in possiblePaths)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (File.Exists(fullPath))
+        {
+            envPath = fullPath;
+            break;
+        }
+    }
+}
+
+// Load the .env file if found
+if (envPath != null && File.Exists(envPath))
+{
+    foreach (var line in File.ReadAllLines(envPath))
+    {
+        if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith("#") && line.Contains('='))
+        {
+            var parts = line.Split('=', 2);
+            Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
+        }
+    }
+}
 
 // Create host builder for the MCP server
 var builder = Host.CreateApplicationBuilder(args);
@@ -11,9 +78,8 @@ var builder = Host.CreateApplicationBuilder(args);
 // MCP servers must not write to stdout/stderr as it interferes with JSON-RPC communication
 builder.Logging.ClearProviders();
 // Register services
-builder.Services.AddSingleton<ICredentialStore, FileCredentialStore>();
+builder.Services.AddSingleton<ICredentialStore, EnvironmentCredentialStore>();
 builder.Services.AddSingleton<SeqConnectionFactory>();
-builder.Configuration["CredentialFile"] = "secrets.json";
 
 // Configure MCP server with stdio transport
 builder.Services

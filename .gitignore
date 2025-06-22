@@ -364,6 +364,7 @@ FodyWeavers.xsd
 
 # Secrets file - never commit
 secrets.json
+.env
 
 # macOS system files
 .DS_Store

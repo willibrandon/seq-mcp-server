@@ -7,13 +7,16 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeqMcpServer", "SeqMcpServe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeqMcpServer.Tests", "SeqMcpServer.Tests\SeqMcpServer.Tests.csproj", "{8B802E4B-CFDE-4523-A22A-45A51781D001}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
+	ProjectSection(SolutionItems) = preProject
+		docs\DEVELOPMENT.md = docs\DEVELOPMENT.md
+		README.md = README.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{90D42966-BC7E-4765-9C1E-A2D8DD6B481E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -24,5 +27,11 @@ Global
 		{8B802E4B-CFDE-4523-A22A-45A51781D001}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8B802E4B-CFDE-4523-A22A-45A51781D001}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8B802E4B-CFDE-4523-A22A-45A51781D001}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {30AB2B01-97A0-4E46-BA2F-4B6BD790139F}
 	EndGlobalSection
 EndGlobal

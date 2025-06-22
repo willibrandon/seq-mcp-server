@@ -3,6 +3,20 @@ services:
   seq:
     image: datalust/seq:latest
     ports: [ "5341:80" ]
+    environment:
+      # Accept the Seq license
+      - ACCEPT_EULA=Y
+      # For development: Start without authentication
+      # WARNING: This leaves Seq wide open - only use for local development!
+      # To enable authentication later, visit http://localhost:5341 > Settings > Users
+      
+      # Alternative: Set initial admin credentials (uncomment to use)
+      # - SEQ_FIRSTRUN_ADMINUSERNAME=admin
+      # - SEQ_FIRSTRUN_ADMINPASSWORD=admin123
+      # - SEQ_FIRSTRUN_REQUIREAUTHENTICATIONFORHTTPINGESTION=false
+    volumes:
+      # Persist Seq data between container restarts
+      - seq-data:/data
 
   mcp:
     build: .
@@ -11,3 +25,6 @@ services:
     environment:
       - Seq:ServerUrl=http://seq:80
     ports: [ "8080:80" ]
+
+volumes:
+  seq-data:
