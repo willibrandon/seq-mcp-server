@@ -3,6 +3,44 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SeqMcpServer.Services;
 using Serilog;
+using System.Reflection;
+
+// Handle command-line arguments
+if (args.Length > 0)
+{
+    var firstArg = args[0].ToLowerInvariant();
+    
+    // Only handle our specific command-line options
+    if (firstArg == "--version" || firstArg == "-v")
+    {
+        var assemblyVersion = Assembly.GetExecutingAssembly().GetName().Version;
+        var version = assemblyVersion != null 
+            ? $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}"
+            : "0.0.0";
+        Console.WriteLine($"seq-mcp-server {version}");
+        return 0;
+    }
+    else if (firstArg == "--help" || firstArg == "-h" || firstArg == "-?")
+    {
+        Console.WriteLine("Seq MCP Server - Query Seq logs via Model Context Protocol");
+        Console.WriteLine();
+        Console.WriteLine("Usage: seq-mcp-server [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --version, -v    Show version information");
+        Console.WriteLine("  --help, -h       Show this help message");
+        Console.WriteLine();
+        Console.WriteLine("Environment Variables:");
+        Console.WriteLine("  SEQ_SERVER_URL   URL of your Seq server (required)");
+        Console.WriteLine("  SEQ_API_KEY      API key for accessing Seq (required)");
+        Console.WriteLine();
+        Console.WriteLine("This is an MCP server designed to be launched by MCP clients.");
+        Console.WriteLine("Configure it in your MCP client (e.g., Claude Desktop) settings.");
+        return 0;
+    }
+    // If it's not one of our options, let it pass through to the host builder
+    // This allows configuration arguments like --Seq:ServerUrl to work
+}
 
 // Load environment variables from .env file if it exists
 // Try multiple strategies to find the .env file
@@ -157,6 +195,7 @@ try
 {
     // Run the MCP server
     await host.RunAsync();
+    return 0;
 }
 finally
 {

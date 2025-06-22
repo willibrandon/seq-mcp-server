@@ -2,6 +2,27 @@
 
 A Model Context Protocol (MCP) server that provides tools for searching and streaming events from Seq.
 
+## Installation
+
+### As a .NET Global Tool (Recommended)
+
+```bash
+# Install
+dotnet tool install -g SeqMcpServer
+
+# Update to latest version
+dotnet tool update -g SeqMcpServer
+
+# Uninstall
+dotnet tool uninstall -g SeqMcpServer
+```
+
+### Requirements
+
+- .NET 9.0 Runtime or SDK
+- Seq server (local or remote)
+- Valid Seq API key
+
 ## Quick Start
 
 ### Development Environment
@@ -83,7 +104,25 @@ The following tools are available through the MCP protocol:
 
 ## Claude Desktop Integration
 
-### Option 1: Pre-built Release (Recommended)
+### Option 1: Using .NET Global Tool (Recommended)
+
+After installing the global tool, add to your Claude Desktop configuration:
+
+```json
+{
+  "mcpServers": {
+    "seq": {
+      "command": "seq-mcp-server",
+      "env": {
+        "SEQ_SERVER_URL": "http://localhost:5341",
+        "SEQ_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
+### Option 2: Pre-built Release
 
 Download the latest release for your platform and add to your MCP settings:
 
@@ -102,7 +141,7 @@ Download the latest release for your platform and add to your MCP settings:
 }
 ```
 
-### Option 2: Build from Source
+### Option 3: Build from Source
 
 Build a single-file executable (requires .NET 9 runtime):
 
