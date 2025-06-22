@@ -129,13 +129,15 @@ The Seq MCP Server uses environment variables for configuration:
 
 ### Workspace Support
 
-You can configure different API keys for different workspaces:
+The MCP server supports workspace-specific API keys (future feature):
 
 ```bash
 export SEQ_API_KEY="default-key"
 export SEQ_API_KEY_PRODUCTION="production-key"
 export SEQ_API_KEY_STAGING="staging-key"
 ```
+
+*Note: Workspace-specific keys are currently designed but not yet implemented in the MCP tools.*
 
 ## Development
 
