@@ -34,7 +34,7 @@ export SEQ_SERVER_URL="http://localhost:5341"
 export SEQ_API_KEY="your-api-key"
 
 # Run the application (MCP server mode)
-dotnet run --project SeqMcpServer
+dotnet run --project src/SeqMcpServer
 
 # Run with Docker Compose (includes Seq server)
 docker compose up
@@ -74,14 +74,14 @@ The application runs as a Model Context Protocol (MCP) server using stdio transp
 
 ### Core Components
 
-**MCP Tools** (SeqMcpServer/Mcp/SeqTools.cs):
+**MCP Tools** (src/SeqMcpServer/Mcp/SeqTools.cs):
 - `SeqSearch`: Search Seq events with filters (count, filter, columns, render)
 - `SeqStream`: Stream live events from Seq (5-second timeout)
 - `SignalList`: List available signals (read-only)
 
 **Services**:
-- `EnvironmentCredentialStore` (Services/EnvironmentCredentialStore.cs): Manages API keys from environment variables
-- `SeqConnectionFactory` (Services/SeqConnectionFactory.cs): Creates Seq API connections per workspace
+- `EnvironmentCredentialStore` (src/SeqMcpServer/Services/EnvironmentCredentialStore.cs): Manages API keys from environment variables
+- `SeqConnectionFactory` (src/SeqMcpServer/Services/SeqConnectionFactory.cs): Creates Seq API connections per workspace
 
 **Configuration**:
 - API keys provided via environment variables:
@@ -93,7 +93,7 @@ The application runs as a Model Context Protocol (MCP) server using stdio transp
 ### Testing Strategy
 - Unit tests for core services (e.g., EnvironmentCredentialStoreTests)
 - Integration tests using Testcontainers to spin up real Seq instances
-- Tests located in `SeqMcpServer.Tests` project
+- Tests located in `tests/SeqMcpServer.Tests` project
 
 ### Project Principles
 - KISS (Keep It Simple, Stupid) - avoid over-engineering
@@ -102,8 +102,8 @@ The application runs as a Model Context Protocol (MCP) server using stdio transp
 - Vendor-neutral approach (no external provider SDKs)
 
 ## Key Files to Understand
-- `Program.cs`: Entry point for MCP server
-- `Mcp/SeqTools.cs`: MCP tool implementations
-- `Services/FileCredentialStore.cs`: Credential management
+- `src/SeqMcpServer/Program.cs`: Entry point for MCP server
+- `src/SeqMcpServer/Mcp/SeqTools.cs`: MCP tool implementations
+- `src/SeqMcpServer/Services/EnvironmentCredentialStore.cs`: Credential management
 - `docs/PRD.md`: Product requirements and design decisions
 - `docker-compose.yml`: Local development setup with Seq
