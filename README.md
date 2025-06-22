@@ -183,4 +183,4 @@ The MCP server can log its own operations to Seq when a valid `SEQ_SERVER_URL` a
 
 ## License
 
-[Your License Here]
+MIT License - see [LICENSE](LICENSE) file for details.
