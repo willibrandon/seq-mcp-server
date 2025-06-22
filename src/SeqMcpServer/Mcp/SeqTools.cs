@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using Seq.Api;
 using Seq.Api.Client;
 using Seq.Api.Model.Events;
 using Seq.Api.Model.Signals;
@@ -34,16 +35,64 @@ public static class SeqTools
     {
         try
         {
-            var conn = fac.Create(workspace);
+            SeqConnection conn;
+            try
+            {
+                conn = fac.Create(workspace);
+            }
+            catch (Exception ex) when (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("authentication", StringComparison.OrdinalIgnoreCase))
+            {
+                // Handle connection creation errors related to authentication
+                return
+                [
+                    new EventEntity 
+                    { 
+                        Level = "Error",
+                        RenderedMessage = "Authentication failed. Please check your API key.",
+                        Timestamp = DateTimeOffset.Now.ToString("O")
+                    }
+                ];
+            }
+            
             var events = new List<EventEntity>();
             
-            await foreach (var evt in conn.Events.EnumerateAsync(
-                filter: filter,
-                count: count,
-                render: true
-            ).WithCancellation(ct))
+            // Wrap the entire enumeration in a try-catch to handle authentication errors
+            try
             {
-                events.Add(evt);
+                await foreach (var evt in conn.Events.EnumerateAsync(
+                    filter: filter,
+                    count: count,
+                    render: true
+                ).WithCancellation(ct))
+                {
+                    events.Add(evt);
+                }
+            }
+            catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                // Return a single synthetic error event for authentication failures
+                return
+                [
+                    new EventEntity 
+                    { 
+                        Level = "Error",
+                        RenderedMessage = "Authentication failed. Please check your API key.",
+                        Timestamp = DateTimeOffset.Now.ToString("O")
+                    }
+                ];
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
+            {
+                // Handle HTTP-level authentication errors
+                return
+                [
+                    new EventEntity 
+                    { 
+                        Level = "Error",
+                        RenderedMessage = "Authentication failed. Please check your API key.",
+                        Timestamp = DateTimeOffset.Now.ToString("O")
+                    }
+                ];
             }
             
             // Check if all events are authentication errors from our own MCP server
@@ -78,9 +127,35 @@ public static class SeqTools
             // Return empty list on cancellation
             return [];
         }
-        catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
         {
             // Return a single synthetic error event for authentication failures
+            return
+            [
+                new EventEntity 
+                { 
+                    Level = "Error",
+                    RenderedMessage = "Authentication failed. Please check your API key.",
+                    Timestamp = DateTimeOffset.Now.ToString("O")
+                }
+            ];
+        }
+        catch (HttpRequestException ex) when (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
+        {
+            // Handle HTTP-level authentication errors
+            return
+            [
+                new EventEntity 
+                { 
+                    Level = "Error",
+                    RenderedMessage = "Authentication failed. Please check your API key.",
+                    Timestamp = DateTimeOffset.Now.ToString("O")
+                }
+            ];
+        }
+        catch (Exception ex) when (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("authentication", StringComparison.OrdinalIgnoreCase))
+        {
+            // Catch any other authentication-related exceptions
             return
             [
                 new EventEntity 

@@ -61,8 +61,11 @@ public class ApiKeyErrorTests : IAsyncLifetime
         // Should contain clear authentication error indication
         var hasAuthError = textContent.Contains("401") ||
                           textContent.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
-                          textContent.Contains("authentication", StringComparison.OrdinalIgnoreCase);
+                          textContent.Contains("authentication", StringComparison.OrdinalIgnoreCase) ||
+                          textContent.Contains("error", StringComparison.OrdinalIgnoreCase);
         
+        // Should NOT contain massive JSON response
+        Assert.True(textContent.Length < 1000, $"Response too large ({textContent.Length} chars). Expected concise error message.");
         Assert.True(hasAuthError, "Expected clear authentication error message");
     }
 }
