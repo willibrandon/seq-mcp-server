@@ -69,12 +69,12 @@ The following tools are available through the MCP protocol:
     - `@Level = "Error"` - error level events
     - `Application = "MyApp"` - events from specific application
 
-- **`SeqStream`** - Stream live events from Seq (5-second timeout)
+- **`SeqWaitForEvents`** - Wait for and capture live events from Seq (5-second timeout)
   - Parameters: 
     - `filter` (optional): Seq filter expression
-    - `count`: Number of events to return (default: 10)
+    - `count`: Number of events to capture (default: 10, max: 100)
     - `workspace` (optional): Specific workspace to query
-  - Returns: List of recent events
+  - Returns: Snapshot of events captured during the wait period (may be empty if no events match)
 
 - **`SignalList`** - List available signals (read-only)
   - Parameters: 

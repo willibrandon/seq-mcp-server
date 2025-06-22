@@ -79,21 +79,37 @@ var builder = Host.CreateApplicationBuilder(args);
 // MCP servers must not write to stdout/stderr as it interferes with JSON-RPC communication
 builder.Logging.ClearProviders();
 
-// Configure Serilog to send logs to Seq if SEQ_SERVER_URL is available
-var seqServerUrl = Environment.GetEnvironmentVariable("SEQ_SERVER_URL");
+// Add filter for MCP-specific events as recommended by Microsoft
+builder.Logging.AddFilter("ModelContextProtocol", LogLevel.Information);
+
+// Configuration validation - ensure required settings are present
+var seqServerUrl = Environment.GetEnvironmentVariable("SEQ_SERVER_URL") 
+    ?? builder.Configuration["Seq:ServerUrl"];
+    
+if (string.IsNullOrEmpty(seqServerUrl))
+{
+    throw new InvalidOperationException("SEQ_SERVER_URL environment variable or Seq:ServerUrl configuration must be set");
+}
+
 var seqApiKey = Environment.GetEnvironmentVariable("SEQ_API_KEY");
 
-if (!string.IsNullOrEmpty(seqServerUrl))
+// Validate API key is provided
+if (string.IsNullOrEmpty(seqApiKey))
 {
-    Log.Logger = new LoggerConfiguration()
-        .MinimumLevel.Information()
-        .Enrich.FromLogContext()
-        .Enrich.WithProperty("Application", "SeqMcpServer")
-        .WriteTo.Seq(seqServerUrl, apiKey: seqApiKey)
-        .CreateLogger();
-    
-    builder.Logging.AddSerilog();
+    throw new InvalidOperationException("SEQ_API_KEY environment variable must be set");
 }
+
+// Configure Serilog with enhanced context for MCP operations
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Debug()
+    .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Information)
+    .MinimumLevel.Override("ModelContextProtocol", Serilog.Events.LogEventLevel.Debug)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "SeqMcpServer")
+    .WriteTo.Seq(seqServerUrl, apiKey: seqApiKey)
+    .CreateLogger();
+
+builder.Logging.AddSerilog();
 // Register services
 builder.Services.AddSingleton<ICredentialStore, EnvironmentCredentialStore>();
 builder.Services.AddSingleton<SeqConnectionFactory>();

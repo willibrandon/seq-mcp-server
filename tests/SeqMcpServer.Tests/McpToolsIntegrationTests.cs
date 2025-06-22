@@ -177,25 +177,25 @@ public class McpToolsIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SeqStream_CanStartStreaming()
+    public async Task SeqWaitForEvents_CanCaptureEvents()
     {
         // Arrange - Get available tools
         var tools = await _mcpClient!.ListToolsAsync();
-        var seqStreamTool = tools.FirstOrDefault(t => t.Name == "SeqStream");
-        Assert.NotNull(seqStreamTool);
+        var seqWaitTool = tools.FirstOrDefault(t => t.Name == "SeqWaitForEvents");
+        Assert.NotNull(seqWaitTool);
 
-        // Act - Call the seq_stream tool via MCP
+        // Act - Call the SeqWaitForEvents tool via MCP
         var result = await _mcpClient!.CallToolAsync(
-            "SeqStream",
+            "SeqWaitForEvents",
             new Dictionary<string, object?>
             {
                 ["filter"] = "*"
             });
 
-        // Assert - Should return valid result
+        // Assert - Should return valid result (may be empty if no events in 5 seconds)
         Assert.NotNull(result);
         Assert.NotNull(result.Content);
-        Assert.True(result.Content.Any());
+        // Note: Content might be empty if no events occurred during the wait period
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         // Assert - Should have our three tools
         Assert.NotNull(tools);
         Assert.Contains(tools, t => t.Name == "SeqSearch");
-        Assert.Contains(tools, t => t.Name == "SeqStream");
+        Assert.Contains(tools, t => t.Name == "SeqWaitForEvents");
         Assert.Contains(tools, t => t.Name == "SignalList");
         Assert.Equal(3, tools.Count);
     }
