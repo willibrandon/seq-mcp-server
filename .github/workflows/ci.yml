@@ -22,7 +22,7 @@ jobs:
       run: dotnet build
     
     - name: Test
-      run: dotnet test --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx"
+      run: dotnet test --verbosity normal --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --logger "console;verbosity=detailed"
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
