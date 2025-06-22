@@ -35,6 +35,7 @@ public static class SeqTools
         {
             var conn = fac.Create(workspace);
             var events = new List<EventEntity>();
+            
             await foreach (var evt in conn.Events.EnumerateAsync(
                 filter: filter,
                 count: count,
@@ -43,6 +44,32 @@ public static class SeqTools
             {
                 events.Add(evt);
             }
+            
+            // Check if all events are authentication errors from our own MCP server
+            // This happens when using an invalid API key with a Seq instance that allows anonymous reads
+            if (events.Count > 0 && events.All(e => 
+                e.Level == "Error" && 
+                e.Exception != null &&
+                e.RenderedMessage != null &&
+                (e.Exception.Contains("SeqApiException") || 
+                 e.Exception.Contains("401") || 
+                 e.Exception.Contains("403") ||
+                 e.Exception.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase)) &&
+                (e.RenderedMessage.Contains("threw an unhandled exception") ||
+                 e.Properties?.Any(p => p.Name == "SourceContext" && p.Value?.ToString()?.Contains("ModelContextProtocol") == true) == true)))
+            {
+                // Return a single synthetic error event instead of thousands of error logs
+                return new List<EventEntity> 
+                { 
+                    new EventEntity 
+                    { 
+                        Level = "Error",
+                        RenderedMessage = "Authentication failed. Please check your API key.",
+                        Timestamp = DateTimeOffset.Now.ToString("O")
+                    }
+                };
+            }
+            
             return events;
         }
         catch (OperationCanceledException)
