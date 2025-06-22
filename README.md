@@ -29,15 +29,28 @@ The setup script automatically:
 - Sets up environment variables
 - Creates a `.env` file for the application
 
-### Production
+### Production Deployment
 
+MCP servers are not run directly - they are launched by MCP clients. For production:
+
+1. Build and deploy the executable:
 ```bash
-# Set environment variables
-export SEQ_SERVER_URL="http://your-seq-server:5341"
-export SEQ_API_KEY="your-api-key"
+dotnet publish -c Release -r win-x64 -p:PublishSingleFile=true
+```
 
-# Run the MCP server
-dotnet run --project SeqMcpServer --configuration Release
+2. Configure your MCP client to use the deployed executable:
+```json
+{
+  "mcpServers": {
+    "seq": {
+      "command": "/path/to/seq-mcp-server",
+      "env": {
+        "SEQ_SERVER_URL": "http://your-seq-server:5341",
+        "SEQ_API_KEY": "your-production-api-key"
+      }
+    }
+  }
+}
 ```
 
 ## MCP Tools
