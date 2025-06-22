@@ -1,10 +1,11 @@
-using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
-using System.Runtime.CompilerServices;
 using ModelContextProtocol.Server;
+using Seq.Api.Client;
 using Seq.Api.Model.Events;
 using Seq.Api.Model.Signals;
 using SeqMcpServer.Services;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Net;
 
 namespace SeqMcpServer.Mcp;
 
@@ -59,15 +60,15 @@ public static class SeqTools
                  e.Properties?.Any(p => p.Name == "SourceContext" && p.Value?.ToString()?.Contains("ModelContextProtocol") == true) == true)))
             {
                 // Return a single synthetic error event instead of thousands of error logs
-                return new List<EventEntity> 
-                { 
+                return
+                [
                     new EventEntity 
                     { 
                         Level = "Error",
                         RenderedMessage = "Authentication failed. Please check your API key.",
                         Timestamp = DateTimeOffset.Now.ToString("O")
                     }
-                };
+                ];
             }
             
             return events;
@@ -75,7 +76,20 @@ public static class SeqTools
         catch (OperationCanceledException)
         {
             // Return empty list on cancellation
-            return new List<EventEntity>();
+            return [];
+        }
+        catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            // Return a single synthetic error event for authentication failures
+            return
+            [
+                new EventEntity 
+                { 
+                    Level = "Error",
+                    RenderedMessage = "Authentication failed. Please check your API key.",
+                    Timestamp = DateTimeOffset.Now.ToString("O")
+                }
+            ];
         }
         catch (Exception)
         {
@@ -130,7 +144,7 @@ public static class SeqTools
         catch (OperationCanceledException)
         {
             // Return what we have on timeout/cancellation
-            return new List<EventEntity>();
+            return [];
         }
         catch (Exception)
         {
@@ -164,7 +178,7 @@ public static class SeqTools
         catch (OperationCanceledException)
         {
             // Return empty list on cancellation
-            return new List<SignalEntity>();
+            return [];
         }
         catch (Exception)
         {
