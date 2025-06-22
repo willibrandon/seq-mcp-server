@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SeqMcpServer.Services;
+using Serilog;
 
 // Load environment variables from .env file if it exists
 // Try multiple strategies to find the .env file
@@ -77,6 +78,22 @@ var builder = Host.CreateApplicationBuilder(args);
 // Clear all default logging providers to prevent console output
 // MCP servers must not write to stdout/stderr as it interferes with JSON-RPC communication
 builder.Logging.ClearProviders();
+
+// Configure Serilog to send logs to Seq if SEQ_SERVER_URL is available
+var seqServerUrl = Environment.GetEnvironmentVariable("SEQ_SERVER_URL");
+var seqApiKey = Environment.GetEnvironmentVariable("SEQ_API_KEY");
+
+if (!string.IsNullOrEmpty(seqServerUrl))
+{
+    Log.Logger = new LoggerConfiguration()
+        .MinimumLevel.Information()
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Application", "SeqMcpServer")
+        .WriteTo.Seq(seqServerUrl, apiKey: seqApiKey)
+        .CreateLogger();
+    
+    builder.Logging.AddSerilog();
+}
 // Register services
 builder.Services.AddSingleton<ICredentialStore, EnvironmentCredentialStore>();
 builder.Services.AddSingleton<SeqConnectionFactory>();
@@ -93,28 +110,42 @@ var host = builder.Build();
 var minVer = Version.Parse(builder.Configuration["SeqVersion:Min"] ?? "2024.1");
 var maxVer = Version.Parse(builder.Configuration["SeqVersion:Max"] ?? "2025.1");
 
+var logger = host.Services.GetService<ILogger<Program>>();
+
 var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
 lifetime.ApplicationStarted.Register(async () =>
 {
+    logger?.LogInformation("Seq MCP Server started");
+    
     try
     {
         var conn = host.Services.GetRequiredService<SeqConnectionFactory>().Create();
         var root = await conn.Client.GetRootAsync();
         var ver = Version.Parse(root.Version);
-        // Version check happens silently - no logging in MCP servers
+        
+        logger?.LogInformation("Connected to Seq version {Version}", ver);
+        
         if (ver < minVer || ver > maxVer)
         {
-            // Could consider failing startup if version is out of range
-            // For now, we'll just continue
+            logger?.LogWarning("Seq version {Version} is outside supported range {MinVersion}-{MaxVersion}", 
+                ver, minVer, maxVer);
         }
     }
-    catch 
+    catch (Exception ex)
     { 
-        // Silently continue - can't log in MCP servers
+        logger?.LogError(ex, "Failed to connect to Seq server");
     }
 });
 
-// Run the MCP server
-await host.RunAsync();
+try
+{
+    // Run the MCP server
+    await host.RunAsync();
+}
+finally
+{
+    // Ensure all logs are flushed before exit
+    await Log.CloseAndFlushAsync();
+}
 
 public partial class Program { }
