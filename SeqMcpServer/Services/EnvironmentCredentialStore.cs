@@ -28,7 +28,7 @@ public sealed class EnvironmentCredentialStore : ICredentialStore
                 return workspaceKey;
         }
         
-        return _defaultApiKey;
+        return _defaultApiKey ?? throw new InvalidOperationException("API key is null");
     }
 
     public void Reload()

@@ -12,8 +12,9 @@ try {
 # Start Seq container for development with known admin credentials
 Write-Host "Starting Seq development container..." -ForegroundColor Yellow
 
-# Remove any existing container first
+# Remove any existing container and volume first
 docker rm -f seq-mcp-dev 2>&1 | Out-Null
+docker volume rm seq-mcp-data 2>&1 | Out-Null
 
 # Start with known admin credentials for development
 $adminPassword = "DevPassword123!"
@@ -25,6 +26,7 @@ docker run -d `
     -e SEQ_FIRSTRUN_ADMINUSERNAME=admin `
     -e SEQ_FIRSTRUN_ADMINPASSWORD=$adminPassword `
     -e SEQ_FIRSTRUN_REQUIREAUTHENTICATIONFORHTTPINGESTION=false `
+    -v seq-mcp-data:/data `
     datalust/seq:latest
 
 # Wait for Seq to be ready
@@ -107,31 +109,93 @@ try {
     
     Write-Host "Successfully logged in as admin" -ForegroundColor Green
     
-    # Now create the API key using the session
-    $apiKeyBody = @{
-        Title = "Development MCP Server"
-        CanRead = $true
-        CanWrite = $true
-        CanIngest = $true
-        CanSuppress = $true
-    } | ConvertTo-Json
+    # Get API key template first
+    Write-Host "Getting API key template..." -ForegroundColor Yellow
+    $template = Invoke-RestMethod -Method GET `
+        -Uri "http://localhost:18081/api/apikeys/template" `
+        -WebSession $session `
+        -ErrorAction Stop
     
+    # Debug: Show what properties the template has
+    Write-Host "Template properties: $($template.PSObject.Properties.Name -join ', ')" -ForegroundColor Gray
+    
+    # Modify the template - only set properties that exist
+    $template.Title = "Development MCP Server"
+    
+    # Only set properties that exist in the template
+    $properties = $template.PSObject.Properties.Name
+    
+    if ($properties -contains "IsEnabled") { 
+        $template.IsEnabled = $true 
+    }
+    
+    # Handle permissions - use only the permissions needed for MCP operations
+    if ($properties -contains "AssignedPermissions") {
+        # For newer Seq versions - only use valid permissions
+        $template.AssignedPermissions = @("Ingest", "Read", "Write")
+    } else {
+        # For older Seq versions that use individual permission properties
+        if ($properties -contains "CanRead") { $template.CanRead = $true }
+        if ($properties -contains "CanWrite") { $template.CanWrite = $true }
+        if ($properties -contains "CanIngest") { $template.CanIngest = $true }
+        if ($properties -contains "CanSuppress") { $template.CanSuppress = $true }
+    }
+    
+    # Create the API key from template
+    Write-Host "Creating API key from template..." -ForegroundColor Yellow
     $response = Invoke-RestMethod -Method POST `
         -Uri "http://localhost:18081/api/apikeys" `
         -ContentType "application/json" `
-        -Body $apiKeyBody `
+        -Body ($template | ConvertTo-Json -Depth 10) `
         -WebSession $session `
         -ErrorAction Stop
     
     $apiKey = $response.Token
     Write-Host "API Key created: $apiKey" -ForegroundColor Green
     
+    # Wait for API key to propagate
+    Write-Host "Waiting for API key to activate..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 3
+    
+    # Verify the API key works (with retries)
+    Write-Host "Verifying API key..." -ForegroundColor Yellow
+    $verified = $false
+    for ($i = 0; $i -lt 10; $i++) {
+        Start-Sleep -Seconds 2
+        try {
+            # Test the API key against the main API endpoint
+            $testResponse = Invoke-RestMethod -Method GET `
+                -Uri "http://localhost:18081/api/events?count=1" `
+                -Headers @{"X-Seq-ApiKey" = $apiKey} `
+                -ErrorAction Stop
+                
+            Write-Host "API key verified successfully!" -ForegroundColor Green
+            $verified = $true
+            break
+        } catch {
+            if ($_.Exception.Response.StatusCode -eq 'Unauthorized') {
+                Write-Host "Attempt $($i+1): API key not yet active..." -ForegroundColor Yellow
+            } else {
+                Write-Host "Attempt $($i+1): $_" -ForegroundColor Yellow
+            }
+        }
+    }
+    
+    if (-not $verified) {
+        Write-Host "Error: API key verification failed after 10 attempts" -ForegroundColor Red
+        Write-Host "The API key '$apiKey' is not working" -ForegroundColor Red
+        Write-Host "Setup cannot continue with an invalid API key" -ForegroundColor Red
+        exit 1
+    }
+    
 } catch {
-    Write-Host "Error: $_" -ForegroundColor Red
+    Write-Host "Error during API key creation: $_" -ForegroundColor Red
     Write-Host "Failed to create API key. Please check Seq logs." -ForegroundColor Yellow
     docker logs seq-mcp-dev | Select-Object -Last 20
     exit 1
 }
+
+# If we got here, we have an API key - continue with setup even if verification failed
 
 # Set environment variables for current session
 $env:SEQ_SERVER_URL = "http://localhost:18081"
