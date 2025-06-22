@@ -373,3 +373,4 @@ secrets.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+/.claude/settings.local.json

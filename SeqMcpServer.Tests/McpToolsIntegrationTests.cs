@@ -123,7 +123,7 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         {
             Name = "Seq MCP Server Test",
             Command = "dotnet",
-            Arguments = ["../../../../SeqMcpServer/bin/Debug/net9.0/SeqMcpServer.dll", "--mcp", $"--Seq:ServerUrl={_seqUrl}", $"--CredentialFile={tempSecretsFileForServer}", "--SeqVersion:Min=2024.1", "--SeqVersion:Max=2025.1"]
+            Arguments = ["../../../../SeqMcpServer/bin/Debug/net9.0/SeqMcpServer.dll", $"--Seq:ServerUrl={_seqUrl}", $"--CredentialFile={tempSecretsFileForServer}", "--SeqVersion:Min=2024.1", "--SeqVersion:Max=2025.1"]
         });
         
         _mcpClient = await McpClientFactory.CreateAsync(clientTransport);

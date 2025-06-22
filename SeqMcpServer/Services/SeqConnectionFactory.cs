@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Seq.Api;
 
 namespace SeqMcpServer.Services;

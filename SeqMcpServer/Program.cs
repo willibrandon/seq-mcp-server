@@ -1,102 +1,54 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using SeqMcpServer.Services;
-using Prometheus;
 using ModelContextProtocol.Server;
-using Serilog;
 
-// Configure Serilog early for bootstrap
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateBootstrapLogger();
+// Create host builder for the MCP server
+var builder = Host.CreateApplicationBuilder(args);
 
-try
+// Clear all default logging providers to prevent console output
+// MCP servers must not write to stdout/stderr as it interferes with JSON-RPC communication
+builder.Logging.ClearProviders();
+// Register services
+builder.Services.AddSingleton<ICredentialStore, FileCredentialStore>();
+builder.Services.AddSingleton<SeqConnectionFactory>();
+builder.Configuration["CredentialFile"] = "secrets.json";
+
+// Configure MCP server with stdio transport
+builder.Services
+    .AddMcpServer()
+    .WithStdioServerTransport()
+    .WithToolsFromAssembly();
+
+var host = builder.Build();
+
+// Seq version validation on startup (without logging since we can't write to console)
+var minVer = Version.Parse(builder.Configuration["SeqVersion:Min"] ?? "2024.1");
+var maxVer = Version.Parse(builder.Configuration["SeqVersion:Max"] ?? "2025.1");
+
+var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+lifetime.ApplicationStarted.Register(async () =>
 {
-    Log.Information("Starting SeqMcpServer");
-
-    // Check if we should run as MCP server (stdio) or web server
-    if (args.Contains("--mcp") || Environment.GetEnvironmentVariable("MCP_MODE") == "true")
+    try
     {
-        // Run as MCP server with stdio transport
-        var mcpBuilder = Host.CreateApplicationBuilder(args);
-        
-        // Configure Serilog from configuration  
-        mcpBuilder.Services.AddSerilog(configuration => configuration
-            .ReadFrom.Configuration(mcpBuilder.Configuration));
-        
-        mcpBuilder.Services.AddSingleton<ICredentialStore, FileCredentialStore>();
-        mcpBuilder.Services.AddSingleton<SeqConnectionFactory>();
-        mcpBuilder.Configuration["CredentialFile"] = "secrets.json";
-        
-        mcpBuilder.Services
-            .AddMcpServer()
-            .WithStdioServerTransport()
-            .WithToolsFromAssembly();
-        
-        await mcpBuilder.Build().RunAsync();
-        return;
+        var conn = host.Services.GetRequiredService<SeqConnectionFactory>().Create();
+        var root = await conn.Client.GetRootAsync();
+        var ver = Version.Parse(root.Version);
+        // Version check happens silently - no logging in MCP servers
+        if (ver < minVer || ver > maxVer)
+        {
+            // Could consider failing startup if version is out of range
+            // For now, we'll just continue
+        }
     }
-    
-    // Run as web application
-    var builder = WebApplication.CreateBuilder(args);
+    catch 
+    { 
+        // Silently continue - can't log in MCP servers
+    }
+});
 
-    // Configure Serilog from configuration
-    builder.Host.UseSerilog((context, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration));
-
-    builder.Services.AddSingleton<ICredentialStore, FileCredentialStore>();
-    builder.Services.AddSingleton<SeqConnectionFactory>();
-    builder.Configuration["CredentialFile"] = "secrets.json";
-
-    var app = builder.Build();
-
-    // Seq version guard
-    var minVer = Version.Parse(builder.Configuration["SeqVersion:Min"] ?? "2024.1");
-    var maxVer = Version.Parse(builder.Configuration["SeqVersion:Max"] ?? "2025.1");
-
-    app.Lifetime.ApplicationStarted.Register(async () =>
-    {
-        try
-        {
-            var conn = app.Services.GetRequiredService<SeqConnectionFactory>().Create();
-            var root = await conn.Client.GetRootAsync();
-            var ver = Version.Parse(root.Version);
-            Log.Information("Connected to Seq {ServerUrl} version {SeqVersion}", 
-                conn.Client.ServerUrl, ver);
-            if (ver < minVer || ver > maxVer)
-                Log.Warning("Seq version {SeqVersion} outside supported range {MinVersion}-{MaxVersion}", 
-                    ver, minVer, maxVer);
-        }
-        catch (Exception ex) 
-        { 
-            Log.Warning(ex, "Unable to retrieve Seq version from {ServerUrl}", 
-                app.Services.GetRequiredService<SeqConnectionFactory>().Create().Client.ServerUrl); 
-        }
-    });
-
-    // Add Prometheus metrics endpoint
-    app.MapMetrics();
-
-    app.MapGet("/healthz", async (SeqConnectionFactory fac) =>
-    {
-        try
-        {
-            await fac.Create().Signals.ListAsync(shared: true);
-            return Results.Ok(new { status = "ok" });
-        }
-        catch
-        {
-            return Results.StatusCode(503);
-        }
-    });
-
-    app.Run();
-}
-catch (Exception ex)
-{
-    Log.Fatal(ex, "SeqMcpServer terminated unexpectedly");
-}
-finally
-{
-    await Log.CloseAndFlushAsync();
-}
+// Run the MCP server
+await host.RunAsync();
 
 public partial class Program { }

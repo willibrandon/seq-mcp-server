@@ -12,11 +12,8 @@ dotnet restore
 # Build the project
 dotnet build
 
-# Run the application (web API mode)
-dotnet run --project SeqMcpServer
-
 # Run the application (MCP server mode)
-dotnet run --project SeqMcpServer -- --mcp
+dotnet run --project SeqMcpServer
 
 # Run with Docker Compose (includes Seq server)
 docker compose up
@@ -51,10 +48,8 @@ docker compose logs -f
 
 ## Architecture
 
-### Application Modes
-The application can run in two modes:
-1. **Web API Mode** (default): Provides health check (`/healthz`) and metrics (`/metrics`) endpoints
-2. **MCP Server Mode** (`--mcp` flag): Runs as a Model Context Protocol server exposing Seq tools
+### Application Mode
+The application runs as a Model Context Protocol (MCP) server using stdio transport, exposing Seq tools to MCP clients.
 
 ### Core Components
 
@@ -84,7 +79,7 @@ The application can run in two modes:
 - Vendor-neutral approach (no external provider SDKs)
 
 ## Key Files to Understand
-- `Program.cs`: Entry point with dual-mode support
+- `Program.cs`: Entry point for MCP server
 - `Mcp/SeqTools.cs`: MCP tool implementations
 - `Services/FileCredentialStore.cs`: Credential management
 - `docs/PRD.md`: Product requirements and design decisions
