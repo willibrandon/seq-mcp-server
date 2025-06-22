@@ -8,7 +8,7 @@ A Model Context Protocol (MCP) server that provides tools for searching and stre
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/seq-mcp-server
+git clone https://github.com/willibrandon/seq-mcp-server
 cd seq-mcp-server
 
 # Setup development environment (fully automated)
