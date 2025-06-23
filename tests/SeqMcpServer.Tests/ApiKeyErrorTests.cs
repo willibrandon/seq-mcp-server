@@ -118,7 +118,7 @@ public class ApiKeyErrorTests : IAsyncLifetime
 
         // Log what we got
         Console.WriteLine($"Content length: {textContent.Length}");
-        Console.WriteLine($"First 500 chars: {textContent[..Math.Min(65656, textContent.Length)]}");
+        Console.WriteLine($"First 1000 chars: {textContent[..Math.Min(1000, textContent.Length)]}");
 
         // Should contain clear authentication error indication
         var hasAuthError = textContent.Contains("401") ||

@@ -46,29 +46,29 @@ public static class SeqTools
                 return new CallToolResult
                 {
                     IsError = true,
-                    Content = new List<ContentBlock>
-                    {
+                    Content =
+                    [
                         new TextContentBlock { Text = ex.Message }
-                    }
+                    ]
                 };
             }
             
             var events = new List<EventEntity>();
             await foreach (var evt in conn.Events.EnumerateAsync(
-                    filter: filter,
-                    count: count,
-                    render: true
-                ).WithCancellation(ct))
+                filter: filter,
+                count: count,
+                render: true,
+                cancellationToken: ct).WithCancellation(ct))
             {
                 events.Add(evt);
             }
 
             return new CallToolResult
             {
-                Content = events.Select(e => new TextContentBlock
+                Content = [.. events.Select(e => new TextContentBlock
                 {
                     Text = JsonSerializer.Serialize(e)
-                }).ToList<ContentBlock>()
+                })]
             };
         }
         catch (OperationCanceledException)
@@ -76,7 +76,7 @@ public static class SeqTools
             // Return empty list on cancellation
             return new CallToolResult
             {
-                Content = new List<ContentBlock>()
+                Content = []
             };
         }
         catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
@@ -84,10 +84,10 @@ public static class SeqTools
             return new CallToolResult
             {
                 IsError = true,
-                Content = new List<ContentBlock>
-                {
+                Content =
+                [
                     new TextContentBlock { Text = "Authentication failed: 401 Unauthorized - Invalid API key" }
-                }
+                ]
             };
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("The requested link") && ex.Message.Contains("isn't available"))
@@ -96,10 +96,10 @@ public static class SeqTools
             return new CallToolResult
             {
                 IsError = true,
-                Content = new List<ContentBlock>
-                {
+                Content =
+                [
                     new TextContentBlock { Text = "Authentication failed: 401 Unauthorized - Invalid API key" }
-                }
+                ]
             };
         }
         catch (Exception ex)
@@ -107,10 +107,10 @@ public static class SeqTools
             return new CallToolResult
             {
                 IsError = true,
-                Content = new List<ContentBlock>
-                {
+                Content =
+                [
                     new TextContentBlock { Text = $"Error: {ex.Message}" }
-                }
+                ]
             };
         }
     }
@@ -150,10 +150,10 @@ public static class SeqTools
                 return new CallToolResult
                 {
                     IsError = true,
-                    Content = new List<ContentBlock>
-                    {
+                    Content =
+                    [
                         new TextContentBlock { Text = ex.Message }
-                    }
+                    ]
                 };
             }
             
@@ -163,21 +163,25 @@ public static class SeqTools
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
             
             await foreach (var evt in conn.Events.StreamAsync(
-                null,
-                null,
-                filter ?? ""
-            ).WithCancellation(combinedCts.Token))
+                unsavedSignal: null,
+                signal: null,
+                filter: filter ?? "",
+                cancellationToken: ct).WithCancellation(combinedCts.Token))
             {
                 events.Add(evt);
-                if (events.Count >= count) break;
+
+                if (events.Count >= count)
+                {
+                    break;
+                }
             }
             
             return new CallToolResult
             {
-                Content = events.Select(e => new TextContentBlock 
+                Content = [.. events.Select(e => new TextContentBlock 
                 { 
                     Text = JsonSerializer.Serialize(e) 
-                }).ToList<ContentBlock>()
+                })]
             };
         }
         catch (OperationCanceledException)
@@ -185,7 +189,7 @@ public static class SeqTools
             // Return what we have on timeout/cancellation
             return new CallToolResult
             {
-                Content = new List<ContentBlock>()
+                Content = []
             };
         }
         catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
@@ -193,10 +197,10 @@ public static class SeqTools
             return new CallToolResult
             {
                 IsError = true,
-                Content = new List<ContentBlock>
-                {
+                Content =
+                [
                     new TextContentBlock { Text = "Authentication failed: 401 Unauthorized - Invalid API key" }
-                }
+                ]
             };
         }
         catch (Exception ex)
@@ -204,10 +208,10 @@ public static class SeqTools
             return new CallToolResult
             {
                 IsError = true,
-                Content = new List<ContentBlock>
-                {
+                Content =
+                [
                     new TextContentBlock { Text = $"Error: {ex.Message}" }
-                }
+                ]
             };
         }
     }
@@ -241,10 +245,10 @@ public static class SeqTools
                 return new CallToolResult
                 {
                     IsError = true,
-                    Content = new List<ContentBlock>
-                    {
+                    Content =
+                    [
                         new TextContentBlock { Text = ex.Message }
-                    }
+                    ]
                 };
             }
             
@@ -252,10 +256,10 @@ public static class SeqTools
             
             return new CallToolResult
             {
-                Content = signals.Select(s => new TextContentBlock 
+                Content = [.. signals.Select(s => new TextContentBlock 
                 { 
                     Text = JsonSerializer.Serialize(s) 
-                }).ToList<ContentBlock>()
+                })]
             };
         }
         catch (OperationCanceledException)
@@ -263,7 +267,7 @@ public static class SeqTools
             // Return empty list on cancellation
             return new CallToolResult
             {
-                Content = new List<ContentBlock>()
+                Content = []
             };
         }
         catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
@@ -271,10 +275,10 @@ public static class SeqTools
             return new CallToolResult
             {
                 IsError = true,
-                Content = new List<ContentBlock>
-                {
+                Content =
+                [
                     new TextContentBlock { Text = "Authentication failed: 401 Unauthorized - Invalid API key" }
-                }
+                ]
             };
         }
         catch (Exception ex)
@@ -282,10 +286,10 @@ public static class SeqTools
             return new CallToolResult
             {
                 IsError = true,
-                Content = new List<ContentBlock>
-                {
+                Content =
+                [
                     new TextContentBlock { Text = $"Error: {ex.Message}" }
-                }
+                ]
             };
         }
     }

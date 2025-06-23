@@ -68,7 +68,7 @@ else
         }
         
         // Stop if we find a .sln file (we've reached the solution root)
-        if (currentDir.GetFiles("*.sln").Any())
+        if (currentDir.GetFiles("*.sln").Length != 0)
         {
             break;
         }
@@ -105,7 +105,7 @@ if (envPath == null)
     {
         foreach (var line in File.ReadAllLines(envPath))
         {
-            if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith("#") && line.Contains('='))
+            if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith('#') && line.Contains('='))
             {
                 var parts = line.Split('=', 2);
                 Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
