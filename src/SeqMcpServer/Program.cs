@@ -42,9 +42,12 @@ if (args.Length > 0)
     // This allows configuration arguments like --Seq:ServerUrl to work
 }
 
-// Load environment variables from .env file if it exists
-// Try multiple strategies to find the .env file
-string? envPath = null;
+// Load environment variables from .env file if it exists (unless disabled)
+var skipEnvFile = Environment.GetEnvironmentVariable("SKIP_ENV_FILE") == "true";
+if (!skipEnvFile)
+{
+    // Try multiple strategies to find the .env file
+    string? envPath = null;
 
 // Strategy 1: Check current directory
 if (File.Exists(".env"))
@@ -97,15 +100,16 @@ if (envPath == null)
     }
 }
 
-// Load the .env file if found
-if (envPath != null && File.Exists(envPath))
-{
-    foreach (var line in File.ReadAllLines(envPath))
+    // Load the .env file if found
+    if (envPath != null && File.Exists(envPath))
     {
-        if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith("#") && line.Contains('='))
+        foreach (var line in File.ReadAllLines(envPath))
         {
-            var parts = line.Split('=', 2);
-            Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
+            if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith("#") && line.Contains('='))
+            {
+                var parts = line.Split('=', 2);
+                Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
+            }
         }
     }
 }
@@ -173,7 +177,7 @@ lifetime.ApplicationStarted.Register(async () =>
     
     try
     {
-        var conn = host.Services.GetRequiredService<SeqConnectionFactory>().Create();
+        var conn = await host.Services.GetRequiredService<SeqConnectionFactory>().CreateAsync();
         var root = await conn.Client.GetRootAsync();
         var ver = Version.Parse(root.Version);
         

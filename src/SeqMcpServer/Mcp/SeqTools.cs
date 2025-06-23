@@ -1,12 +1,13 @@
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Seq.Api;
 using Seq.Api.Client;
 using Seq.Api.Model.Events;
-using Seq.Api.Model.Signals;
 using SeqMcpServer.Services;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Net;
+using System.Text.Json;
 
 namespace SeqMcpServer.Mcp;
 
@@ -26,8 +27,8 @@ public static class SeqTools
     /// <param name="ct">Cancellation token</param>
     /// <returns>List of matching events</returns>
     [McpServerTool, Description("Search Seq events with filters, returning up to the specified count")]
-    public static async Task<List<EventEntity>> SeqSearch(
-        SeqConnectionFactory fac,
+    public static async Task<CallToolResult> SeqSearch(
+        SeqConnectionFactory factory,
         [Required] string filter,
         [Range(1, 1000)] int count = 100,
         string? workspace = null,
@@ -35,28 +36,82 @@ public static class SeqTools
     {
         try
         {
-            var conn = fac.Create(workspace);
+            SeqConnection conn;
+            try
+            {
+                conn = await factory.CreateAsync(workspace);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Authentication failed"))
+            {
+                return new CallToolResult
+                {
+                    IsError = true,
+                    Content = new List<ContentBlock>
+                    {
+                        new TextContentBlock { Text = ex.Message }
+                    }
+                };
+            }
+            
             var events = new List<EventEntity>();
             await foreach (var evt in conn.Events.EnumerateAsync(
-                filter: filter,
-                count: count,
-                render: true
-            ).WithCancellation(ct))
+                    filter: filter,
+                    count: count,
+                    render: true
+                ).WithCancellation(ct))
             {
                 events.Add(evt);
             }
 
-            return events;
+            return new CallToolResult
+            {
+                Content = events.Select(e => new TextContentBlock
+                {
+                    Text = JsonSerializer.Serialize(e)
+                }).ToList<ContentBlock>()
+            };
         }
         catch (OperationCanceledException)
         {
             // Return empty list on cancellation
-            return [];
+            return new CallToolResult
+            {
+                Content = new List<ContentBlock>()
+            };
         }
-        catch (Exception)
+        catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {
-            // Re-throw to let MCP handle the error
-            throw;
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = new List<ContentBlock>
+                {
+                    new TextContentBlock { Text = "Authentication failed: 401 Unauthorized - Invalid API key" }
+                }
+            };
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("The requested link") && ex.Message.Contains("isn't available"))
+        {
+            // This happens when Seq returns an error response due to invalid API key
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = new List<ContentBlock>
+                {
+                    new TextContentBlock { Text = "Authentication failed: 401 Unauthorized - Invalid API key" }
+                }
+            };
+        }
+        catch (Exception ex)
+        {   
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = new List<ContentBlock>
+                {
+                    new TextContentBlock { Text = $"Error: {ex.Message}" }
+                }
+            };
         }
     }
 
@@ -76,8 +131,8 @@ public static class SeqTools
     /// <param name="ct">Cancellation token</param>
     /// <returns>Snapshot of events captured during the wait period (may be empty)</returns>
     [McpServerTool, Description("Wait for and capture live events from Seq (times out after 5 seconds, returns captured events as a snapshot)")]
-    public static async Task<List<EventEntity>> SeqWaitForEvents(
-        SeqConnectionFactory fac,
+    public static async Task<CallToolResult> SeqWaitForEvents(
+        SeqConnectionFactory factory,
         string? filter = null,
         [Range(1, 100)] int count = 10,
         string? workspace = null,
@@ -85,7 +140,23 @@ public static class SeqTools
     {
         try
         {
-            var conn = fac.Create(workspace);
+            SeqConnection conn;
+            try
+            {
+                conn = await factory.CreateAsync(workspace);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Authentication failed"))
+            {
+                return new CallToolResult
+                {
+                    IsError = true,
+                    Content = new List<ContentBlock>
+                    {
+                        new TextContentBlock { Text = ex.Message }
+                    }
+                };
+            }
+            
             var events = new List<EventEntity>();
             
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -101,17 +172,43 @@ public static class SeqTools
                 if (events.Count >= count) break;
             }
             
-            return events;
+            return new CallToolResult
+            {
+                Content = events.Select(e => new TextContentBlock 
+                { 
+                    Text = JsonSerializer.Serialize(e) 
+                }).ToList<ContentBlock>()
+            };
         }
         catch (OperationCanceledException)
         {
             // Return what we have on timeout/cancellation
-            return [];
+            return new CallToolResult
+            {
+                Content = new List<ContentBlock>()
+            };
         }
-        catch (Exception)
+        catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {
-            // Re-throw to let MCP handle the error
-            throw;
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = new List<ContentBlock>
+                {
+                    new TextContentBlock { Text = "Authentication failed: 401 Unauthorized - Invalid API key" }
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = new List<ContentBlock>
+                {
+                    new TextContentBlock { Text = $"Error: {ex.Message}" }
+                }
+            };
         }
     }
 
@@ -127,25 +224,69 @@ public static class SeqTools
     /// <param name="ct">Cancellation token</param>
     /// <returns>List of available signals</returns>
     [McpServerTool, Description("List available signals in Seq (read-only access to shared signals)")]
-    public static async Task<List<SignalEntity>> SignalList(
-        SeqConnectionFactory fac,
+    public static async Task<CallToolResult> SignalList(
+        SeqConnectionFactory factory,
         string? workspace = null,
         CancellationToken ct = default)
     {
         try
         {
-            var conn = fac.Create(workspace);
-            return await conn.Signals.ListAsync(shared: true, cancellationToken: ct);
+            SeqConnection conn;
+            try
+            {
+                conn = await factory.CreateAsync(workspace);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Authentication failed"))
+            {
+                return new CallToolResult
+                {
+                    IsError = true,
+                    Content = new List<ContentBlock>
+                    {
+                        new TextContentBlock { Text = ex.Message }
+                    }
+                };
+            }
+            
+            var signals = await conn.Signals.ListAsync(shared: true, cancellationToken: ct);
+            
+            return new CallToolResult
+            {
+                Content = signals.Select(s => new TextContentBlock 
+                { 
+                    Text = JsonSerializer.Serialize(s) 
+                }).ToList<ContentBlock>()
+            };
         }
         catch (OperationCanceledException)
         {
             // Return empty list on cancellation
-            return [];
+            return new CallToolResult
+            {
+                Content = new List<ContentBlock>()
+            };
         }
-        catch (Exception)
+        catch (SeqApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {
-            // Re-throw to let MCP handle the error
-            throw;
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = new List<ContentBlock>
+                {
+                    new TextContentBlock { Text = "Authentication failed: 401 Unauthorized - Invalid API key" }
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = new List<ContentBlock>
+                {
+                    new TextContentBlock { Text = $"Error: {ex.Message}" }
+                }
+            };
         }
     }
 }

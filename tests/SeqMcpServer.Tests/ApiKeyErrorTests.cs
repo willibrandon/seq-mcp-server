@@ -56,6 +56,7 @@ public class ApiKeyErrorTests : IAsyncLifetime
             {
                 // Ignore and retry
             }
+
             await Task.Delay(1000);
         }
         
@@ -71,7 +72,7 @@ public class ApiKeyErrorTests : IAsyncLifetime
         // Create a logger factory for the client transport
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
-            builder.SetMinimumLevel(LogLevel.Debug);
+            builder.SetMinimumLevel(LogLevel.Information);
         });
         
         var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
@@ -82,7 +83,8 @@ public class ApiKeyErrorTests : IAsyncLifetime
             EnvironmentVariables = new Dictionary<string, string?>
             {
                 ["SEQ_SERVER_URL"] = _seqUrl,
-                ["SEQ_API_KEY"] = "InvalidApiKey123"
+                ["SEQ_API_KEY"] = "InvalidApiKey123",
+                ["SKIP_ENV_FILE"] = "true"
             }
         }, loggerFactory);
         
