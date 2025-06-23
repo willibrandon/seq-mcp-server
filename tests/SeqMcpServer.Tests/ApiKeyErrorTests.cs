@@ -25,6 +25,7 @@ public class ApiKeyErrorTests : IAsyncLifetime
             .WithEnvironment("SEQ_FIRSTRUN_ADMINUSERNAME", "admin")
             .WithEnvironment("SEQ_FIRSTRUN_ADMINPASSWORD", "admin123")
             .WithEnvironment("SEQ_FIRSTRUN_REQUIREAUTHENTICATIONFORHTTPINGESTION", "true")
+            .WithEnvironment("SEQ_FIRSTRUN_DISABLEANONYMOUSREADACCESS", "true")
             .WithTmpfsMount("/data")
             .Build();
 
@@ -108,23 +109,23 @@ public class ApiKeyErrorTests : IAsyncLifetime
                 ["filter"] = "@Level = 'Error'",
                 ["count"] = 10
             });
-        
-        // Assert
-        Assert.NotNull(result);
-        Assert.True(result.IsError);
-        
+
         var textContent = string.Join(" ", result.Content
             .OfType<TextContentBlock>()
             .Select(c => c.Text));
-        
+
         // Log what we got
         Console.WriteLine($"Content length: {textContent.Length}");
-        Console.WriteLine($"First 500 chars: {textContent.Substring(0, Math.Min(500, textContent.Length))}");
+        Console.WriteLine($"First 500 chars: {textContent[..Math.Min(65656, textContent.Length)]}");
 
         // Should contain clear authentication error indication
         var hasAuthError = textContent.Contains("401") ||
                           textContent.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
                           textContent.Contains("authentication", StringComparison.OrdinalIgnoreCase);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.IsError);
 
         Assert.True(textContent.Length < 1000);
         Assert.True(hasAuthError, "Expected clear authentication error message");
