@@ -5,8 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
 using SeqMcpServer.Services;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace SeqMcpServer.Tests;
 
@@ -87,10 +85,10 @@ public class McpToolsIntegrationTests : IAsyncLifetime
             services.AddSingleton<SeqConnectionFactory>(provider =>
             {
                 var config = new ConfigurationBuilder()
-                    .AddInMemoryCollection(new[]
-                    {
+                    .AddInMemoryCollection(
+                    [
                         new KeyValuePair<string, string?>("Seq:ServerUrl", _seqUrl)
-                    })
+                    ])
                     .Build();
                 var store = provider.GetRequiredService<ICredentialStore>();
                 return new SeqConnectionFactory(config, store);

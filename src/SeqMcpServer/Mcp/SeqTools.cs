@@ -1,10 +1,9 @@
-using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
-using System.Runtime.CompilerServices;
 using ModelContextProtocol.Server;
 using Seq.Api.Model.Events;
 using Seq.Api.Model.Signals;
 using SeqMcpServer.Services;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 
 namespace SeqMcpServer.Mcp;
 
@@ -38,8 +37,8 @@ public static class SeqTools
             await foreach (var evt in conn.Events.EnumerateAsync(
                 filter: filter,
                 count: count,
-                render: true
-            ).WithCancellation(ct))
+                render: true,
+                cancellationToken: ct).WithCancellation(ct))
             {
                 events.Add(evt);
             }
@@ -48,7 +47,7 @@ public static class SeqTools
         catch (OperationCanceledException)
         {
             // Return empty list on cancellation
-            return new List<EventEntity>();
+            return [];
         }
         catch (Exception)
         {
@@ -89,10 +88,10 @@ public static class SeqTools
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
             
             await foreach (var evt in conn.Events.StreamAsync(
-                null,
-                null,
-                filter ?? ""
-            ).WithCancellation(combinedCts.Token))
+                unsavedSignal: null,
+                signal: null,
+                filter: filter ?? string.Empty,
+                cancellationToken: ct).WithCancellation(combinedCts.Token))
             {
                 events.Add(evt);
                 if (events.Count >= count) break;
@@ -103,7 +102,7 @@ public static class SeqTools
         catch (OperationCanceledException)
         {
             // Return what we have on timeout/cancellation
-            return new List<EventEntity>();
+            return [];
         }
         catch (Exception)
         {
@@ -137,7 +136,7 @@ public static class SeqTools
         catch (OperationCanceledException)
         {
             // Return empty list on cancellation
-            return new List<SignalEntity>();
+            return [];
         }
         catch (Exception)
         {
