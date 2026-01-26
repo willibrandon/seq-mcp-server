@@ -144,4 +144,65 @@ public static class SeqTools
             throw;
         }
     }
+
+    /// <summary>
+    /// Convert a fuzzy filter expression to a strict Seq filter expression.
+    /// </summary>
+    /// <remarks>
+    /// Seq supports both "fuzzy" filters (like typing in the UI search box) and "strict" filters
+    /// (formal filter expressions). This tool converts fuzzy filters to strict ones, helping users
+    /// write correct filter expressions. For example, "error" becomes a proper filter expression.
+    /// The result includes whether the filter was interpreted as a text search and the reason if so.
+    /// </remarks>
+    /// <param name="fac">Factory for creating Seq connections</param>
+    /// <param name="fuzzyFilter">The fuzzy filter expression to convert (e.g., "error", "timeout")</param>
+    /// <param name="workspace">Optional workspace identifier for multi-tenant scenarios</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Conversion result including the strict expression and metadata about the conversion</returns>
+    [McpServerTool, Description("Convert a fuzzy filter expression to a strict Seq filter expression. Helps write correct filters for SeqSearch.")]
+    public static async Task<object> SeqConvertFilter(
+        SeqConnectionFactory fac,
+        [Required] string fuzzyFilter,
+        string? workspace = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var conn = fac.Create(workspace);
+            var result = await conn.Expressions.ToStrictAsync(fuzzyFilter, cancellationToken: ct);
+
+            if (result == null)
+            {
+                return new
+                {
+                    strictExpression = fuzzyFilter,
+                    matchedAsText = false,
+                    reasonIfMatchedAsText = (string?)null
+                };
+            }
+
+            // Return all useful fields from ExpressionPart
+            return new
+            {
+                strictExpression = result.StrictExpression ?? fuzzyFilter,
+                matchedAsText = result.MatchedAsText,
+                reasonIfMatchedAsText = result.ReasonIfMatchedAsText
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            // Return original filter on cancellation
+            return new
+            {
+                strictExpression = fuzzyFilter,
+                matchedAsText = false,
+                reasonIfMatchedAsText = (string?)null
+            };
+        }
+        catch (Exception)
+        {
+            // Re-throw to let MCP handle the error
+            throw;
+        }
+    }
 }

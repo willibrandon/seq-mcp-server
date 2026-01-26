@@ -202,11 +202,58 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         // Act - List available tools via MCP
         var tools = await _mcpClient!.ListToolsAsync();
 
-        // Assert - Should have our three tools
+        // Assert - Should have our four tools
         Assert.NotNull(tools);
         Assert.Contains(tools, t => t.Name == "SeqSearch");
         Assert.Contains(tools, t => t.Name == "SeqWaitForEvents");
         Assert.Contains(tools, t => t.Name == "SignalList");
-        Assert.Equal(3, tools.Count);
+        Assert.Contains(tools, t => t.Name == "SeqConvertFilter");
+        Assert.Equal(4, tools.Count);
+    }
+
+    [Fact]
+    public async Task SeqConvertFilter_ConvertsFilterSuccessfully()
+    {
+        // Act - Convert a fuzzy filter to strict
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqConvertFilter",
+            new Dictionary<string, object?>
+            {
+                ["fuzzyFilter"] = "error"
+            });
+
+        // Assert - Should return a converted filter with all three fields
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any());
+        Assert.False(result.IsError);
+
+        // Serialize the content to JSON string to verify structure
+        var contentJson = JsonSerializer.Serialize(result.Content.First());
+        Assert.Contains("strictExpression", contentJson);
+        Assert.Contains("matchedAsText", contentJson);
+        Assert.Contains("reasonIfMatchedAsText", contentJson);
+    }
+
+    [Fact]
+    public async Task SeqConvertFilter_WithTextSearch_ReturnsMetadata()
+    {
+        // Act - Convert a fuzzy filter that will be treated as text search
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqConvertFilter",
+            new Dictionary<string, object?>
+            {
+                ["fuzzyFilter"] = "error timeout" // Invalid syntax, will be text search
+            });
+
+        // Assert - Should return result with matchedAsText=true and reason
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any());
+        Assert.False(result.IsError);
+
+        var contentJson = JsonSerializer.Serialize(result.Content.First());
+        Assert.Contains("\"matchedAsText\":true", contentJson);
+        Assert.Contains("reasonIfMatchedAsText", contentJson);
     }
 }
