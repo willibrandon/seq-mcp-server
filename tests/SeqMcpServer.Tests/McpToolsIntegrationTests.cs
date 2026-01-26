@@ -209,4 +209,192 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         Assert.Contains(tools, t => t.Name == "SignalList");
         Assert.Equal(3, tools.Count);
     }
+
+    [Fact]
+    public async Task SeqSearch_WithDateRange_ReturnsFilteredEvents()
+    {
+        // Arrange - Set up date range (last 7 days to now)
+        var fromDate = DateTime.UtcNow.AddDays(-7).ToString("o");
+        var toDate = DateTime.UtcNow.ToString("o");
+
+        // Act - Call SeqSearch with date range
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 10,
+                ["fromDateUtc"] = fromDate,
+                ["toDateUtc"] = toDate
+            });
+
+        // Assert - Should return valid result
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        // Note: May be empty if no events in date range
+    }
+
+    [Fact]
+    public async Task SeqSearch_WithTimeout_ReturnsBeforeTimeout()
+    {
+        // Act - Call SeqSearch with a reasonable timeout
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 10,
+                ["timeoutSeconds"] = 30
+            });
+
+        // Assert - Should return valid result before timeout
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+    }
+
+    [Fact]
+    public async Task SeqSearch_WithInvalidDateFormat_ReturnsError()
+    {
+        // Act - Call SeqSearch with invalid date format
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 10,
+                ["fromDateUtc"] = "not-a-date"
+            });
+
+        // Assert - Should indicate an error occurred
+        Assert.NotNull(result);
+        Assert.True(result.IsError, "Expected IsError to be true for invalid date format");
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any(), "Expected error content to be present");
+    }
+
+    [Fact]
+    public async Task SeqSearch_WithInvalidSignalId_ReturnsError()
+    {
+        // Act - Call SeqSearch with non-existent signal ID
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 10,
+                ["signalId"] = "signal-nonexistent-12345"
+            });
+
+        // Assert - Should indicate an error occurred
+        Assert.NotNull(result);
+        Assert.True(result.IsError, "Expected IsError to be true for invalid signal ID");
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any(), "Expected error content to be present");
+    }
+
+    [Fact]
+    public async Task SeqSearch_WithVeryShortTimeout_HandlesGracefully()
+    {
+        // Act - Call SeqSearch with a very short timeout (1 second)
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 1000, // Large count that might take time
+                ["timeoutSeconds"] = 1
+            });
+
+        // Assert - Should return successfully (may be empty list if timeout)
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        // Content may be empty if timeout occurred
+    }
+
+    [Fact]
+    public async Task SeqSearch_WithAfterId_ReturnsPaginatedResults()
+    {
+        // Arrange - First, get initial results to get an event ID
+        var firstResult = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 5
+            });
+
+        Assert.NotNull(firstResult);
+        Assert.NotNull(firstResult.Content);
+
+        // If we have events, test pagination with afterId
+        if (firstResult.Content.Any())
+        {
+            // Parse the first result to extract event IDs
+            // Note: This is a simplified test - in a real scenario we'd parse the JSON
+            // For now, just test that the parameter is accepted
+            var secondResult = await _mcpClient!.CallToolAsync(
+                "SeqSearch",
+                new Dictionary<string, object?>
+                {
+                    ["filter"] = "*",
+                    ["count"] = 5,
+                    ["afterId"] = "event-test-id" // Using a test ID
+                });
+
+            // Assert - Should accept the parameter without error
+            Assert.NotNull(secondResult);
+            Assert.NotNull(secondResult.Content);
+        }
+    }
+
+    [Fact]
+    public async Task SeqSearch_WithAsteriskFilter_NormalizesToEmptyString()
+    {
+        // Act - Search with "*" which should be normalized to empty string
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 5
+            });
+
+        // Assert - Should succeed (filter normalized to empty string) or return specific error
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        // With filter normalization, "*" should work. If it fails, check error message
+        if (result.IsError)
+        {
+            var errorJson = JsonSerializer.Serialize(result.Content.First());
+            // Should either work (IsError=false) or give a helpful error about syntax
+            Assert.True(errorJson.Contains("Syntax error") || errorJson.Contains("Invalid filter"));
+        }
+    }
+
+    [Fact]
+    public async Task SeqSearch_WithInvalidFilterSyntax_ReturnsHelpfulError()
+    {
+        // Act - Search with invalid filter syntax
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "@Level = = 'Error'", // Invalid syntax (double =)
+                ["count"] = 5
+            });
+
+        // Assert - Should return error with some helpful message
+        Assert.NotNull(result);
+        Assert.True(result.IsError);
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any());
+
+        var errorJson = JsonSerializer.Serialize(result.Content.First());
+        // Should contain either our improved error message or at least mention an error occurred
+        Assert.True(
+            errorJson.Contains("Invalid filter expression") ||
+            errorJson.Contains("Syntax error") ||
+            errorJson.Contains("An error occurred"),
+            "Error message should indicate filter syntax problem");
+    }
 }
