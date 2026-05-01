@@ -34,14 +34,42 @@ public static class SeqTools
         {
             var conn = fac.Create(workspace);
             var events = new List<EventEntity>();
-            await foreach (var evt in conn.Events.EnumerateAsync(
-                filter: filter,
-                count: count,
-                render: true,
-                cancellationToken: ct).WithCancellation(ct))
+
+            try
             {
-                events.Add(evt);
+                await foreach (var evt in conn.Events.EnumerateAsync(
+                    filter: filter,
+                    count: count,
+                    render: true,
+                    cancellationToken: ct).WithCancellation(ct))
+                {
+                    events.Add(evt);
+                }
             }
+            catch (NotSupportedException ex) when (ex.Message.Contains("Scan", StringComparison.OrdinalIgnoreCase))
+            {
+                // Older or differently-configured Seq APIs may not expose the Scan link used by EnumerateAsync().
+                await foreach (var evt in conn.Events.PagedEnumerateAsync(
+                    unsavedSignal: null,
+                    signal: null,
+                    filter: filter,
+                    count: count,
+                    startAtId: null,
+                    afterId: null,
+                    render: true,
+                    fromDateUtc: null,
+                    toDateUtc: null,
+                    shortCircuitAfter: null,
+                    permalinkId: null,
+                    variables: null,
+                    background: false,
+                    trace: false,
+                    cancellationToken: ct).WithCancellation(ct))
+                {
+                    events.Add(evt);
+                }
+            }
+
             return events;
         }
         catch (OperationCanceledException)

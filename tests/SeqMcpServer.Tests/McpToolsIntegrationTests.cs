@@ -103,7 +103,7 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         // Create MCP client transport
         // Build path relative to the test assembly location
         var testAssemblyLocation = Path.GetDirectoryName(typeof(McpToolsIntegrationTests).Assembly.Location)!;
-        var serverDllPath = Path.GetFullPath(Path.Combine(testAssemblyLocation, "../../../../../src/SeqMcpServer/bin/Debug/net9.0/SeqMcpServer.dll"));
+        var serverDllPath = Path.GetFullPath(Path.Combine(testAssemblyLocation, "../../../../../src/SeqMcpServer/bin/Debug/net10.0/SeqMcpServer.dll"));
         
         var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
         {
@@ -137,6 +137,8 @@ public class McpToolsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SeqSearch_WithValidFilter_ReturnsEvents()
     {
+        await WriteTestEventAsync("Compatibility smoke event", "CompatibilitySmoke", true);
+
         // Arrange - Get available tools
         var tools = await _mcpClient!.ListToolsAsync();
         var seqSearchTool = tools.FirstOrDefault(t => t.Name == "SeqSearch");
@@ -147,11 +149,29 @@ public class McpToolsIntegrationTests : IAsyncLifetime
             "SeqSearch",
             new Dictionary<string, object?>
             {
-                ["filter"] = "*",
+                ["filter"] = "CompatibilitySmoke = true",
                 ["count"] = 10
             });
 
         // Assert - Should return valid result
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any());
+    }
+
+    [Fact]
+    public async Task SeqSearch_WithSeq2024_3WithoutScanLink_FallsBackToPagedEnumeration()
+    {
+        await WriteTestEventAsync("Compat fallback event", "CompatibilityFallback", true);
+
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "CompatibilityFallback = true",
+                ["count"] = 10
+            });
+
         Assert.NotNull(result);
         Assert.NotNull(result.Content);
         Assert.True(result.Content.Any());
@@ -208,5 +228,19 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         Assert.Contains(tools, t => t.Name == "SeqWaitForEvents");
         Assert.Contains(tools, t => t.Name == "SignalList");
         Assert.Equal(3, tools.Count);
+    }
+
+    private async Task WriteTestEventAsync(string messageTemplate, string propertyName, bool propertyValue)
+    {
+        ArgumentNullException.ThrowIfNull(_seqUrl);
+
+        using var httpClient = new HttpClient();
+        var clef = $$"""
+            {"@t":"{{DateTimeOffset.UtcNow:O}}","@mt":"{{messageTemplate}}","{{propertyName}}":{{propertyValue.ToString().ToLowerInvariant()}}}
+            """;
+
+        using var content = new StringContent(clef, System.Text.Encoding.UTF8, "application/vnd.serilog.clef");
+        using var response = await httpClient.PostAsync($"{_seqUrl}/api/events/raw?clef", content);
+        response.EnsureSuccessStatusCode();
     }
 }
