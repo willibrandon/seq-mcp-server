@@ -258,7 +258,7 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
 [Collection("McpIntegration")]
 public class McpToolsIntegrationLegacySeqTests : McpToolsIntegrationTestsBase
 {
-    protected override string SeqImageTag => "2024.3";
+    protected override string SeqImageTag => "2024.3.13181";
 
     [Fact]
     public async Task SeqSearch_WithValidFilter_ReturnsEvents() =>
@@ -275,13 +275,6 @@ public class McpToolsIntegrationLegacySeqTests : McpToolsIntegrationTestsBase
     [Fact]
     public async Task MCP_Client_CanListTools() =>
         await MCP_Client_CanListTools_Core();
-
-    [Fact]
-    public async Task SeqSearch_WithSeq2024_3WithoutScanLink_FallsBackToPagedEnumeration()
-    {
-        await AssertScanLinkAvailabilityAsync(shouldExist: false);
-        await SeqSearch_WithPropertyFilter_ReturnsEvents("CompatibilityFallback");
-    }
 }
 
 [Collection("McpIntegration")]

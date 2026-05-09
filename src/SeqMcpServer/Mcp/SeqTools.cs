@@ -1,6 +1,7 @@
 using ModelContextProtocol.Server;
 using Seq.Api.Model.Events;
 using Seq.Api.Model.Signals;
+using Seq.Api.ResourceGroups;
 using SeqMcpServer.Services;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
@@ -35,7 +36,12 @@ public static class SeqTools
             var conn = fac.Create(workspace);
             var events = new List<EventEntity>();
 
-            try
+            // Probe whether this Seq server exposes the Scan link (added in Seq 2024.4).
+            // SeqConnection caches the resource group, so this doesn't add a round-trip.
+            var eventsGroup = await ((ILoadResourceGroup)conn).LoadResourceGroupAsync("Events", ct);
+            var hasScanLink = eventsGroup.Links.ContainsKey("Scan");
+
+            if (hasScanLink)
             {
                 await foreach (var evt in conn.Events.EnumerateAsync(
                     filter: filter,
@@ -46,9 +52,8 @@ public static class SeqTools
                     events.Add(evt);
                 }
             }
-            catch (NotSupportedException ex) when (ex.Message.Contains("Scan", StringComparison.OrdinalIgnoreCase))
+            else
             {
-                // Older or differently-configured Seq APIs may not expose the Scan link used by EnumerateAsync().
                 await foreach (var evt in conn.Events.PagedEnumerateAsync(
                     unsavedSignal: null,
                     signal: null,
