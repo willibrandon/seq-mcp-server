@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
+using Seq.Api;
 using SeqMcpServer.Services;
 
 namespace SeqMcpServer.Tests;
@@ -16,6 +17,7 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
     private IMcpClient? _mcpClient;
 
     protected abstract string SeqImageTag { get; }
+    protected virtual bool DisableFirstRunAuthentication => false;
 
     protected string SeqUrl => _seqUrl ?? throw new InvalidOperationException("Seq URL not initialized.");
     protected IMcpClient McpClient => _mcpClient ?? throw new InvalidOperationException("MCP client not initialized.");
@@ -23,14 +25,20 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
     public async Task InitializeAsync()
     {
         // Start Seq container - version is configured by each derived test fixture
-        _seqContainer = new ContainerBuilder()
+        var containerBuilder = new ContainerBuilder()
             .WithImage($"datalust/seq:{SeqImageTag}")
             .WithPortBinding(80, true)  // Map container port 80 (main API) to random host port
             .WithEnvironment("ACCEPT_EULA", "Y")
             .WithEnvironment("SEQ_API_CANONICALURI", "http://localhost")
             .WithEnvironment("SEQ_CACHE_SYSTEMRAMTARGET", "0.1")  // Reduce memory usage for tests
-            .WithTmpfsMount("/data")  // Use tmpfs for data directory in tests
-            .Build();
+            .WithTmpfsMount("/data");  // Use tmpfs for data directory in tests
+
+        if (DisableFirstRunAuthentication)
+        {
+            containerBuilder = containerBuilder.WithEnvironment("SEQ_FIRSTRUN_NOAUTHENTICATION", "true");
+        }
+
+        _seqContainer = containerBuilder.Build();
 
         await _seqContainer.StartAsync();
         
@@ -181,13 +189,13 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
 
     protected async Task AssertScanLinkAvailabilityAsync(bool shouldExist)
     {
-        using var httpClient = new HttpClient();
-        var eventsApi = await httpClient.GetStringAsync($"{SeqUrl}/api/events");
+        var connection = new SeqConnection(SeqUrl, "test-api-key");
+        var hasScanLink = await SeqCapabilities.SupportsScanAsync(connection);
 
         if (shouldExist)
-            Assert.Contains("Scan", eventsApi, StringComparison.OrdinalIgnoreCase);
+            Assert.True(hasScanLink);
         else
-            Assert.DoesNotContain("Scan", eventsApi, StringComparison.OrdinalIgnoreCase);
+            Assert.False(hasScanLink);
     }
 
     protected async Task SignalList_ReturnsSignals_Core()
@@ -280,7 +288,8 @@ public class McpToolsIntegrationLegacySeqTests : McpToolsIntegrationTestsBase
 [Collection("McpIntegration")]
 public class McpToolsIntegrationModernSeqTests : McpToolsIntegrationTestsBase
 {
-    protected override string SeqImageTag => "2025.2";
+    protected override string SeqImageTag => "2025.2.16202";
+    protected override bool DisableFirstRunAuthentication => true;
 
     [Fact]
     public async Task SeqSearch_WithValidFilter_ReturnsEvents() =>
