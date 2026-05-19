@@ -105,17 +105,44 @@ public static class SeqTools
                     ct = combinedCts.Token;
                 }
 
-                await foreach (var evt in conn.Events.EnumerateAsync(
-                    unsavedSignal: signalEntity,
-                    filter: filter,
-                    count: count,
-                    afterId: afterId,
-                    fromDateUtc: fromDate,
-                    toDateUtc: toDate,
-                    render: true,
-                    cancellationToken: ct).WithCancellation(ct))
+                var hasScanLink = await SeqCapabilities.SupportsScanAsync(conn, ct);
+
+                if (hasScanLink)
                 {
-                    events.Add(evt);
+                    await foreach (var evt in conn.Events.EnumerateAsync(
+                        unsavedSignal: signalEntity,
+                        filter: filter,
+                        count: count,
+                        afterId: afterId,
+                        fromDateUtc: fromDate,
+                        toDateUtc: toDate,
+                        render: true,
+                        cancellationToken: ct).WithCancellation(ct))
+                    {
+                        events.Add(evt);
+                    }
+                }
+                else
+                {
+                    await foreach (var evt in conn.Events.PagedEnumerateAsync(
+                        unsavedSignal: signalEntity,
+                        signal: null,
+                        filter: filter,
+                        count: count,
+                        startAtId: null,
+                        afterId: afterId,
+                        render: true,
+                        fromDateUtc: fromDate,
+                        toDateUtc: toDate,
+                        shortCircuitAfter: null,
+                        permalinkId: null,
+                        variables: null,
+                        background: false,
+                        trace: false,
+                        cancellationToken: ct).WithCancellation(ct))
+                    {
+                        events.Add(evt);
+                    }
                 }
 
                 return events;
