@@ -4,29 +4,41 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
+using Seq.Api;
 using SeqMcpServer.Services;
 
 namespace SeqMcpServer.Tests;
 
-[Collection("McpIntegration")]
-public class McpToolsIntegrationTests : IAsyncLifetime
+public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
 {
     private IContainer? _seqContainer;
     private string? _seqUrl;
     private IHost? _mcpServerHost;
     private IMcpClient? _mcpClient;
 
+    protected abstract string SeqImageTag { get; }
+    protected virtual bool DisableFirstRunAuthentication => false;
+
+    protected string SeqUrl => _seqUrl ?? throw new InvalidOperationException("Seq URL not initialized.");
+    protected IMcpClient McpClient => _mcpClient ?? throw new InvalidOperationException("MCP client not initialized.");
+
     public async Task InitializeAsync()
     {
-        // Start Seq container - use stable version and proper configuration
-        _seqContainer = new ContainerBuilder()
-            .WithImage("datalust/seq:2024.3")  // Use specific stable version
+        // Start Seq container - version is configured by each derived test fixture
+        var containerBuilder = new ContainerBuilder()
+            .WithImage($"datalust/seq:{SeqImageTag}")
             .WithPortBinding(80, true)  // Map container port 80 (main API) to random host port
             .WithEnvironment("ACCEPT_EULA", "Y")
             .WithEnvironment("SEQ_API_CANONICALURI", "http://localhost")
             .WithEnvironment("SEQ_CACHE_SYSTEMRAMTARGET", "0.1")  // Reduce memory usage for tests
-            .WithTmpfsMount("/data")  // Use tmpfs for data directory in tests
-            .Build();
+            .WithTmpfsMount("/data");  // Use tmpfs for data directory in tests
+
+        if (DisableFirstRunAuthentication)
+        {
+            containerBuilder = containerBuilder.WithEnvironment("SEQ_FIRSTRUN_NOAUTHENTICATION", "true");
+        }
+
+        _seqContainer = containerBuilder.Build();
 
         await _seqContainer.StartAsync();
         
@@ -102,8 +114,8 @@ public class McpToolsIntegrationTests : IAsyncLifetime
 
         // Create MCP client transport
         // Build path relative to the test assembly location
-        var testAssemblyLocation = Path.GetDirectoryName(typeof(McpToolsIntegrationTests).Assembly.Location)!;
-        var serverDllPath = Path.GetFullPath(Path.Combine(testAssemblyLocation, "../../../../../src/SeqMcpServer/bin/Debug/net9.0/SeqMcpServer.dll"));
+        var testAssemblyLocation = Path.GetDirectoryName(typeof(McpToolsIntegrationTestsBase).Assembly.Location)!;
+        var serverDllPath = Path.GetFullPath(Path.Combine(testAssemblyLocation, "../../../../../src/SeqMcpServer/bin/Debug/net10.0/SeqMcpServer.dll"));
         
         var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
         {
@@ -134,20 +146,21 @@ public class McpToolsIntegrationTests : IAsyncLifetime
             await _seqContainer.DisposeAsync();
     }
 
-    [Fact]
-    public async Task SeqSearch_WithValidFilter_ReturnsEvents()
+    protected async Task SeqSearch_WithValidFilter_ReturnsEvents_Core()
     {
+        await WriteTestEventAsync("Compatibility smoke event", "CompatibilitySmoke", true);
+
         // Arrange - Get available tools
-        var tools = await _mcpClient!.ListToolsAsync();
+        var tools = await McpClient.ListToolsAsync();
         var seqSearchTool = tools.FirstOrDefault(t => t.Name == "SeqSearch");
         Assert.NotNull(seqSearchTool);
 
         // Act - Call the seq_search tool via MCP
-        var result = await _mcpClient!.CallToolAsync(
+        var result = await McpClient.CallToolAsync(
             "SeqSearch",
             new Dictionary<string, object?>
             {
-                ["filter"] = "*",
+                ["filter"] = "CompatibilitySmoke = true",
                 ["count"] = 10
             });
 
@@ -157,16 +170,43 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         Assert.True(result.Content.Any());
     }
 
-    [Fact]
-    public async Task SignalList_ReturnsSignals()
+    protected async Task SeqSearch_WithPropertyFilter_ReturnsEvents(string propertyName)
+    {
+        await WriteTestEventAsync("Compatibility fixture event", propertyName, true);
+
+        var result = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = $"{propertyName} = true",
+                ["count"] = 10
+            });
+
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any());
+    }
+
+    protected async Task AssertScanLinkAvailabilityAsync(bool shouldExist)
+    {
+        var connection = new SeqConnection(SeqUrl, "test-api-key");
+        var hasScanLink = await SeqCapabilities.SupportsScanAsync(connection);
+
+        if (shouldExist)
+            Assert.True(hasScanLink);
+        else
+            Assert.False(hasScanLink);
+    }
+
+    protected async Task SignalList_ReturnsSignals_Core()
     {
         // Arrange - Get available tools
-        var tools = await _mcpClient!.ListToolsAsync();
+        var tools = await McpClient.ListToolsAsync();
         var signalListTool = tools.FirstOrDefault(t => t.Name == "SignalList");
         Assert.NotNull(signalListTool);
 
         // Act - Call the signal_list tool via MCP
-        var result = await _mcpClient!.CallToolAsync("SignalList", new Dictionary<string, object?>());
+        var result = await McpClient.CallToolAsync("SignalList", new Dictionary<string, object?>());
 
         // Assert - Should return valid result
         Assert.NotNull(result);
@@ -174,16 +214,15 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         Assert.True(result.Content.Any());
     }
 
-    [Fact]
-    public async Task SeqWaitForEvents_CanCaptureEvents()
+    protected async Task SeqWaitForEvents_CanCaptureEvents_Core()
     {
         // Arrange - Get available tools
-        var tools = await _mcpClient!.ListToolsAsync();
+        var tools = await McpClient.ListToolsAsync();
         var seqWaitTool = tools.FirstOrDefault(t => t.Name == "SeqWaitForEvents");
         Assert.NotNull(seqWaitTool);
 
         // Act - Call the SeqWaitForEvents tool via MCP
-        var result = await _mcpClient!.CallToolAsync(
+        var result = await McpClient.CallToolAsync(
             "SeqWaitForEvents",
             new Dictionary<string, object?>
             {
@@ -196,11 +235,10 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         // Note: Content might be empty if no events occurred during the wait period
     }
 
-    [Fact]
-    public async Task MCP_Client_CanListTools()
+    protected async Task MCP_Client_CanListTools_Core()
     {
         // Act - List available tools via MCP
-        var tools = await _mcpClient!.ListToolsAsync();
+        var tools = await McpClient.ListToolsAsync();
 
         // Assert - Should have our four tools
         Assert.NotNull(tools);
@@ -255,5 +293,71 @@ public class McpToolsIntegrationTests : IAsyncLifetime
         var contentJson = JsonSerializer.Serialize(result.Content.First());
         Assert.Contains("\"matchedAsText\":true", contentJson);
         Assert.Contains("reasonIfMatchedAsText", contentJson);
+    }
+
+    private async Task WriteTestEventAsync(string messageTemplate, string propertyName, bool propertyValue)
+    {
+        ArgumentNullException.ThrowIfNull(_seqUrl);
+
+        using var httpClient = new HttpClient();
+        var clef = $$"""
+            {"@t":"{{DateTimeOffset.UtcNow:O}}","@mt":"{{messageTemplate}}","{{propertyName}}":{{propertyValue.ToString().ToLowerInvariant()}}}
+            """;
+
+        using var content = new StringContent(clef, System.Text.Encoding.UTF8, "application/vnd.serilog.clef");
+        using var response = await httpClient.PostAsync($"{_seqUrl}/api/events/raw?clef", content);
+        response.EnsureSuccessStatusCode();
+    }
+}
+
+[Collection("McpIntegration")]
+public class McpToolsIntegrationLegacySeqTests : McpToolsIntegrationTestsBase
+{
+    protected override string SeqImageTag => "2024.3.13181";
+
+    [Fact]
+    public async Task SeqSearch_WithValidFilter_ReturnsEvents() =>
+        await SeqSearch_WithValidFilter_ReturnsEvents_Core();
+
+    [Fact]
+    public async Task SignalList_ReturnsSignals() =>
+        await SignalList_ReturnsSignals_Core();
+
+    [Fact]
+    public async Task SeqWaitForEvents_CanCaptureEvents() =>
+        await SeqWaitForEvents_CanCaptureEvents_Core();
+
+    [Fact]
+    public async Task MCP_Client_CanListTools() =>
+        await MCP_Client_CanListTools_Core();
+}
+
+[Collection("McpIntegration")]
+public class McpToolsIntegrationModernSeqTests : McpToolsIntegrationTestsBase
+{
+    protected override string SeqImageTag => "2025.2.16202";
+    protected override bool DisableFirstRunAuthentication => true;
+
+    [Fact]
+    public async Task SeqSearch_WithValidFilter_ReturnsEvents() =>
+        await SeqSearch_WithValidFilter_ReturnsEvents_Core();
+
+    [Fact]
+    public async Task SignalList_ReturnsSignals() =>
+        await SignalList_ReturnsSignals_Core();
+
+    [Fact]
+    public async Task SeqWaitForEvents_CanCaptureEvents() =>
+        await SeqWaitForEvents_CanCaptureEvents_Core();
+
+    [Fact]
+    public async Task MCP_Client_CanListTools() =>
+        await MCP_Client_CanListTools_Core();
+
+    [Fact]
+    public async Task SeqSearch_WithSeq2025_2WithScanLink_CoversDirectScanPath()
+    {
+        await AssertScanLinkAvailabilityAsync(shouldExist: true);
+        await SeqSearch_WithPropertyFilter_ReturnsEvents("CompatibilityScan");
     }
 }

@@ -19,7 +19,7 @@ dotnet tool uninstall -g SeqMcpServer
 
 ### Requirements
 
-- .NET 9.0 Runtime or SDK
+- .NET 10.0 Runtime or SDK
 - Seq server (local or remote)
 - Valid Seq API key
 
@@ -151,7 +151,7 @@ Download the latest release for your platform and add to your MCP settings:
 
 ### Option 3: Build from Source
 
-Build a single-file executable (requires .NET 9 runtime):
+Build a single-file executable (requires .NET 10 runtime):
 
 ```bash
 # Windows
@@ -164,7 +164,7 @@ dotnet publish -c Release -r osx-x64 -p:PublishSingleFile=true
 dotnet publish -c Release -r linux-x64 -p:PublishSingleFile=true
 ```
 
-The executable will be in `SeqMcpServer/bin/Release/net9.0/{runtime}/publish/`
+The executable will be in `SeqMcpServer/bin/Release/net10.0/{runtime}/publish/`
 
 ## Configuration
 
@@ -173,6 +173,20 @@ The Seq MCP Server uses environment variables for configuration:
 - `SEQ_SERVER_URL`: URL of your Seq server
 - `SEQ_API_KEY`: API key for accessing Seq (required)
 - `SEQ_API_KEY_<WORKSPACE>`: Optional workspace-specific API keys (e.g., `SEQ_API_KEY_PRODUCTION`)
+
+### Seq Compatibility
+
+`SeqSearch` prefers `Events.EnumerateAsync()`, which uses the Seq `Scan` link when the server advertises it. Older Seq builds such as `2024.3.x` do not expose `Scan` on `api/events/resources`; in that case the server now falls back to `PagedEnumerateAsync()` so searches continue to work instead of failing with:
+
+```text
+System.NotSupportedException: The requested link `Scan` isn't available on entity `Seq.Api.Model.ResourceGroup`.
+```
+
+If you are debugging compatibility issues:
+
+- Seq `2025.2.x` and newer expose `Scan`
+- Seq `2024.3.x` does not expose `Scan`
+- this MCP server supports both paths by falling back automatically
 
 ### Workspace Support
 
@@ -190,7 +204,7 @@ export SEQ_API_KEY_STAGING="staging-key"
 
 ### Prerequisites
 
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - Docker (for running Seq locally)
 
 ### Running Tests

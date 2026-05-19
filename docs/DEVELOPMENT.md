@@ -89,6 +89,16 @@ The application uses environment variables for configuration. These can be set v
 - `SEQ_SERVER_URL`: URL of your Seq server (e.g., `http://localhost:18081`)
 - `SEQ_API_KEY`: API key for accessing Seq
 
+## Compatibility Notes
+
+Seq `2024.3.x` does not expose the `Scan` link under `api/events/resources`. If `SeqSearch` is implemented only through `Events.EnumerateAsync()`, searches can fail with:
+
+```text
+System.NotSupportedException: The requested link `Scan` isn't available on entity `Seq.Api.Model.ResourceGroup`.
+```
+
+The current implementation falls back to `PagedEnumerateAsync()` when `Scan` is unavailable so local development against older Seq containers remains functional.
+
 ### Workspace-Specific Keys (Optional)
 
 You can configure different API keys for different workspaces:
