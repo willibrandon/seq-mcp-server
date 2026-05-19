@@ -34,14 +34,43 @@ public static class SeqTools
         {
             var conn = fac.Create(workspace);
             var events = new List<EventEntity>();
-            await foreach (var evt in conn.Events.EnumerateAsync(
-                filter: filter,
-                count: count,
-                render: true,
-                cancellationToken: ct).WithCancellation(ct))
+
+            var hasScanLink = await SeqCapabilities.SupportsScanAsync(conn, ct);
+
+            if (hasScanLink)
             {
-                events.Add(evt);
+                await foreach (var evt in conn.Events.EnumerateAsync(
+                    filter: filter,
+                    count: count,
+                    render: true,
+                    cancellationToken: ct).WithCancellation(ct))
+                {
+                    events.Add(evt);
+                }
             }
+            else
+            {
+                await foreach (var evt in conn.Events.PagedEnumerateAsync(
+                    unsavedSignal: null,
+                    signal: null,
+                    filter: filter,
+                    count: count,
+                    startAtId: null,
+                    afterId: null,
+                    render: true,
+                    fromDateUtc: null,
+                    toDateUtc: null,
+                    shortCircuitAfter: null,
+                    permalinkId: null,
+                    variables: null,
+                    background: false,
+                    trace: false,
+                    cancellationToken: ct).WithCancellation(ct))
+                {
+                    events.Add(evt);
+                }
+            }
+
             return events;
         }
         catch (OperationCanceledException)
