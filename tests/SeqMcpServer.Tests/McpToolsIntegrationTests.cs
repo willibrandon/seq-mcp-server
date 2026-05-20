@@ -292,8 +292,12 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         Assert.False(result.IsError);
 
         var contentJson = JsonSerializer.Serialize(result.Content.First());
-        Assert.Contains("\"matchedAsText\":true", contentJson);
-        Assert.Contains("reasonIfMatchedAsText", contentJson);
+        using var outer = JsonDocument.Parse(contentJson);
+        var innerText = outer.RootElement.GetProperty("text").GetString();
+        Assert.NotNull(innerText);
+        using var inner = JsonDocument.Parse(innerText);
+        Assert.True(inner.RootElement.GetProperty("matchedAsText").GetBoolean());
+        Assert.False(string.IsNullOrEmpty(inner.RootElement.GetProperty("reasonIfMatchedAsText").GetString()));
     }
 
     private async Task WriteTestEventAsync(string messageTemplate, string propertyName, bool propertyValue)
