@@ -222,14 +222,11 @@ public static class SeqTools
                 result.MatchedAsText,
                 result.ReasonIfMatchedAsText);
         }
-        catch (OperationCanceledException)
-        {
-            // Return original filter on cancellation
-            return new SeqConvertFilterResult(fuzzyFilter, false, null);
-        }
         catch (Exception)
         {
-            // Re-throw to let MCP handle the error
+            // Re-throw to let MCP handle the error. Unlike the list-returning tools in this
+            // file, there is no unambiguous "empty" SeqConvertFilterResult value, so cancellation
+            // also propagates rather than being swallowed.
             throw;
         }
     }
