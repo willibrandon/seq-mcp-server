@@ -4,8 +4,20 @@ using Seq.Api.Model.Signals;
 using SeqMcpServer.Services;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace SeqMcpServer.Mcp;
+
+/// <summary>
+/// Result of converting a fuzzy filter expression to a strict Seq filter expression.
+/// </summary>
+/// <param name="StrictExpression">The strict filter expression (the original input if no conversion was needed).</param>
+/// <param name="MatchedAsText">True if Seq interpreted the input as a free-text search rather than a filter expression.</param>
+/// <param name="ReasonIfMatchedAsText">Explanation of why the input was interpreted as text, or null when it wasn't.</param>
+public sealed record SeqConvertFilterResult(
+    [property: JsonPropertyName("strictExpression")] string StrictExpression,
+    [property: JsonPropertyName("matchedAsText")] bool MatchedAsText,
+    [property: JsonPropertyName("reasonIfMatchedAsText"), JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ReasonIfMatchedAsText);
 
 /// <summary>
 /// MCP tools for interacting with Seq structured logging server.
@@ -189,7 +201,7 @@ public static class SeqTools
     /// <param name="ct">Cancellation token</param>
     /// <returns>Conversion result including the strict expression and metadata about the conversion</returns>
     [McpServerTool, Description("Convert a fuzzy filter expression to a strict Seq filter expression. Helps write correct filters for SeqSearch.")]
-    public static async Task<object> SeqConvertFilter(
+    public static async Task<SeqConvertFilterResult> SeqConvertFilter(
         SeqConnectionFactory fac,
         [Required] string fuzzyFilter,
         string? workspace = null,
@@ -202,31 +214,18 @@ public static class SeqTools
 
             if (result == null)
             {
-                return new
-                {
-                    strictExpression = fuzzyFilter,
-                    matchedAsText = false,
-                    reasonIfMatchedAsText = (string?)null
-                };
+                return new SeqConvertFilterResult(fuzzyFilter, false, null);
             }
 
-            // Return all useful fields from ExpressionPart
-            return new
-            {
-                strictExpression = result.StrictExpression ?? fuzzyFilter,
-                matchedAsText = result.MatchedAsText,
-                reasonIfMatchedAsText = result.ReasonIfMatchedAsText
-            };
+            return new SeqConvertFilterResult(
+                result.StrictExpression ?? fuzzyFilter,
+                result.MatchedAsText,
+                result.ReasonIfMatchedAsText);
         }
         catch (OperationCanceledException)
         {
             // Return original filter on cancellation
-            return new
-            {
-                strictExpression = fuzzyFilter,
-                matchedAsText = false,
-                reasonIfMatchedAsText = (string?)null
-            };
+            return new SeqConvertFilterResult(fuzzyFilter, false, null);
         }
         catch (Exception)
         {
