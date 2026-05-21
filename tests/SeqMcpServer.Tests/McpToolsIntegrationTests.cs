@@ -250,42 +250,24 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         Assert.Equal(4, tools.Count);
     }
 
-    [Fact]
-    public async Task SeqConvertFilter_ConvertsFilterSuccessfully()
+    [Theory]
+    // Bareword and invalid syntax fall back to text-match
+    [InlineData("error", "\"error\"", true)]
+    [InlineData("error timeout", "\"error timeout\"", true)]
+    // Already-strict filter expressions pass through unchanged
+    [InlineData("@Level = 'Error'", "@Level = 'Error'", false)]
+    [InlineData("Application = 'foo'", "Application = 'foo'", false)]
+    // Fuzzy-but-valid expression gets normalized (== becomes =)
+    [InlineData("User=='alice'", "User = 'alice'", false)]
+    public async Task SeqConvertFilter_ReturnsExpectedResult(string fuzzyFilter, string expectedStrict, bool expectedMatchedAsText)
     {
-        // Act - Convert a fuzzy filter to strict
         var result = await _mcpClient!.CallToolAsync(
             "SeqConvertFilter",
             new Dictionary<string, object?>
             {
-                ["fuzzyFilter"] = "error"
+                ["fuzzyFilter"] = fuzzyFilter
             });
 
-        // Assert - Should return a converted filter with all three fields
-        Assert.NotNull(result);
-        Assert.NotNull(result.Content);
-        Assert.True(result.Content.Any());
-        Assert.False(result.IsError);
-
-        // Serialize the content to JSON string to verify structure
-        var contentJson = JsonSerializer.Serialize(result.Content.First());
-        Assert.Contains("strictExpression", contentJson);
-        Assert.Contains("matchedAsText", contentJson);
-        Assert.Contains("reasonIfMatchedAsText", contentJson);
-    }
-
-    [Fact]
-    public async Task SeqConvertFilter_WithTextSearch_ReturnsMetadata()
-    {
-        // Act - Convert a fuzzy filter that will be treated as text search
-        var result = await _mcpClient!.CallToolAsync(
-            "SeqConvertFilter",
-            new Dictionary<string, object?>
-            {
-                ["fuzzyFilter"] = "error timeout" // Invalid syntax, will be text search
-            });
-
-        // Assert - Should return result with matchedAsText=true and reason
         Assert.NotNull(result);
         Assert.NotNull(result.Content);
         Assert.True(result.Content.Any());
@@ -296,8 +278,12 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         var innerText = outer.RootElement.GetProperty("text").GetString();
         Assert.NotNull(innerText);
         using var inner = JsonDocument.Parse(innerText);
-        Assert.True(inner.RootElement.GetProperty("matchedAsText").GetBoolean());
-        Assert.False(string.IsNullOrEmpty(inner.RootElement.GetProperty("reasonIfMatchedAsText").GetString()));
+
+        Assert.Equal(expectedStrict, inner.RootElement.GetProperty("strictExpression").GetString());
+        Assert.Equal(expectedMatchedAsText, inner.RootElement.GetProperty("matchedAsText").GetBoolean());
+
+        var reason = inner.RootElement.GetProperty("reasonIfMatchedAsText").GetString();
+        Assert.Equal(expectedMatchedAsText, !string.IsNullOrEmpty(reason));
     }
 
     private async Task WriteTestEventAsync(string messageTemplate, string propertyName, bool propertyValue)
