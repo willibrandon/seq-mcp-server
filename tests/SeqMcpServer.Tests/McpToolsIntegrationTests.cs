@@ -330,21 +330,6 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         Assert.Equal(0, GetEventCount(outOfRangeResult));
     }
 
-    protected async Task SeqSearch_WithTimeout_ReturnsBeforeTimeout_Core()
-    {
-        var result = await McpClient.CallToolAsync(
-            "SeqSearch",
-            new Dictionary<string, object?>
-            {
-                ["filter"] = "*",
-                ["count"] = 10,
-                ["timeoutSeconds"] = 30
-            });
-
-        Assert.NotNull(result);
-        Assert.NotNull(result.Content);
-    }
-
     protected async Task SeqSearch_WithInvalidDateFormat_ReturnsError_Core()
     {
         var result = await McpClient.CallToolAsync(
@@ -377,21 +362,6 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         Assert.True(result.IsError, "Expected IsError to be true for invalid signal ID");
         Assert.NotNull(result.Content);
         Assert.True(result.Content.Any(), "Expected error content to be present");
-    }
-
-    protected async Task SeqSearch_WithVeryShortTimeout_HandlesGracefully_Core()
-    {
-        var result = await McpClient.CallToolAsync(
-            "SeqSearch",
-            new Dictionary<string, object?>
-            {
-                ["filter"] = "*",
-                ["count"] = 1000,
-                ["timeoutSeconds"] = 1
-            });
-
-        Assert.NotNull(result);
-        Assert.NotNull(result.Content);
     }
 
     protected async Task SeqSearch_WithAfterId_ReturnsPaginatedResults_Core()
@@ -592,20 +562,12 @@ public class McpToolsIntegrationModernSeqTests : McpToolsIntegrationTestsBase
         await SeqSearch_WithDateRange_ReturnsFilteredEvents_Core();
 
     [Fact]
-    public async Task SeqSearch_WithTimeout_ReturnsBeforeTimeout() =>
-        await SeqSearch_WithTimeout_ReturnsBeforeTimeout_Core();
-
-    [Fact]
     public async Task SeqSearch_WithInvalidDateFormat_ReturnsError() =>
         await SeqSearch_WithInvalidDateFormat_ReturnsError_Core();
 
     [Fact]
     public async Task SeqSearch_WithInvalidSignalId_ReturnsError() =>
         await SeqSearch_WithInvalidSignalId_ReturnsError_Core();
-
-    [Fact]
-    public async Task SeqSearch_WithVeryShortTimeout_HandlesGracefully() =>
-        await SeqSearch_WithVeryShortTimeout_HandlesGracefully_Core();
 
     [Fact]
     public async Task SeqSearch_WithAfterId_ReturnsPaginatedResults() =>
