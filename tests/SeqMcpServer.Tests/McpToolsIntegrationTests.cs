@@ -396,31 +396,48 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
 
     protected async Task SeqSearch_WithAfterId_ReturnsPaginatedResults_Core()
     {
+        var marker = $"PaginationTest{Guid.NewGuid():N}";
+        const int totalEvents = 10;
+        const int pageSize = 5;
+
+        for (var i = 0; i < totalEvents; i++)
+        {
+            await WriteTestEventAsync($"Pagination fixture event {i}", marker, true);
+        }
+
+        // First page
         var firstResult = await McpClient.CallToolAsync(
             "SeqSearch",
             new Dictionary<string, object?>
             {
-                ["filter"] = "*",
-                ["count"] = 5
+                ["filter"] = $"{marker} = true",
+                ["count"] = pageSize
             });
 
         Assert.NotNull(firstResult);
-        Assert.NotNull(firstResult.Content);
+        Assert.False(firstResult.IsError, "Expected first-page search to succeed");
+        var firstIds = GetEventIds(firstResult);
+        Assert.Equal(pageSize, firstIds.Count);
 
-        if (firstResult.Content.Any())
-        {
-            var secondResult = await McpClient.CallToolAsync(
-                "SeqSearch",
-                new Dictionary<string, object?>
-                {
-                    ["filter"] = "*",
-                    ["count"] = 5,
-                    ["afterId"] = "event-test-id"
-                });
+        // Second page - use the last (oldest) event ID from page 1 as the cursor
+        var afterId = firstIds.Last();
 
-            Assert.NotNull(secondResult);
-            Assert.NotNull(secondResult.Content);
-        }
+        var secondResult = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = $"{marker} = true",
+                ["count"] = pageSize,
+                ["afterId"] = afterId
+            });
+
+        Assert.NotNull(secondResult);
+        Assert.False(secondResult.IsError, "Expected second-page search to succeed");
+        var secondIds = GetEventIds(secondResult);
+        Assert.NotEmpty(secondIds);
+
+        // Pagination must return events not seen on page 1
+        Assert.Empty(firstIds.Intersect(secondIds));
     }
 
     protected async Task SeqSearch_WithAsteriskFilter_NormalizesToEmptyString_Core()
