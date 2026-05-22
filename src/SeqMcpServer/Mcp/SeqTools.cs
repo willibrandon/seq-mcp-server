@@ -4,8 +4,20 @@ using Seq.Api.Model.Signals;
 using SeqMcpServer.Services;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace SeqMcpServer.Mcp;
+
+/// <summary>
+/// Result of converting a fuzzy filter expression to a strict Seq filter expression.
+/// </summary>
+/// <param name="StrictExpression">The strict filter expression (the original input if no conversion was needed).</param>
+/// <param name="MatchedAsText">True if Seq interpreted the input as a free-text search rather than a filter expression.</param>
+/// <param name="ReasonIfMatchedAsText">Explanation of why the input was interpreted as text, or null when it wasn't.</param>
+public sealed record SeqConvertFilterResult(
+    [property: JsonPropertyName("strictExpression")] string StrictExpression,
+    [property: JsonPropertyName("matchedAsText")] bool MatchedAsText,
+    [property: JsonPropertyName("reasonIfMatchedAsText"), JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ReasonIfMatchedAsText);
 
 /// <summary>
 /// MCP tools for interacting with Seq structured logging server.
@@ -170,6 +182,51 @@ public static class SeqTools
         catch (Exception)
         {
             // Re-throw to let MCP handle the error
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Convert a fuzzy filter expression to a strict Seq filter expression.
+    /// </summary>
+    /// <remarks>
+    /// Seq supports both "fuzzy" filters (like typing in the UI search box) and "strict" filters
+    /// (formal filter expressions). This tool converts fuzzy filters to strict ones, helping users
+    /// write correct filter expressions. For example, "error" becomes a proper filter expression.
+    /// The result includes whether the filter was interpreted as a text search and the reason if so.
+    /// </remarks>
+    /// <param name="fac">Factory for creating Seq connections</param>
+    /// <param name="fuzzyFilter">The fuzzy filter expression to convert (e.g., "error", "timeout")</param>
+    /// <param name="workspace">Optional workspace identifier for multi-tenant scenarios</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Conversion result including the strict expression and metadata about the conversion</returns>
+    [McpServerTool, Description("Convert a fuzzy filter expression to a strict Seq filter expression. Helps write correct filters for SeqSearch.")]
+    public static async Task<SeqConvertFilterResult> SeqConvertFilter(
+        SeqConnectionFactory fac,
+        [Required] string fuzzyFilter,
+        string? workspace = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var conn = fac.Create(workspace);
+            var result = await conn.Expressions.ToStrictAsync(fuzzyFilter, cancellationToken: ct);
+
+            if (result == null)
+            {
+                return new SeqConvertFilterResult(fuzzyFilter, false, null);
+            }
+
+            return new SeqConvertFilterResult(
+                result.StrictExpression ?? fuzzyFilter,
+                result.MatchedAsText,
+                result.ReasonIfMatchedAsText);
+        }
+        catch (Exception)
+        {
+            // Re-throw to let MCP handle the error. Unlike the list-returning tools in this
+            // file, there is no unambiguous "empty" SeqConvertFilterResult value, so cancellation
+            // also propagates rather than being swallowed.
             throw;
         }
     }

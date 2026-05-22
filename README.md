@@ -98,9 +98,17 @@ The following tools are available through the MCP protocol:
   - Returns: Snapshot of events captured during the wait period (may be empty if no events match)
 
 - **`SignalList`** - List available signals (read-only)
-  - Parameters: 
+  - Parameters:
     - `workspace` (optional): Specific workspace to query
   - Returns: List of signals with their definitions
+
+- **`SeqConvertFilter`** - Convert fuzzy filter to strict filter expression
+  - Parameters:
+    - `fuzzyFilter` (required): Fuzzy search text (e.g., "error", "timeout")
+    - `workspace` (optional): Specific workspace to query
+  - Returns: Strict Seq filter expression for use in `SeqSearch`
+  - Use case: Help users write correct filter expressions
+  - Example: Convert "error" to a proper Seq filter expression
 
 ## Claude Desktop Integration
 
