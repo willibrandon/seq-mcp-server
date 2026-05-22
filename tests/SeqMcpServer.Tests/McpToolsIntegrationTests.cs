@@ -241,12 +241,49 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         // Act - List available tools via MCP
         var tools = await McpClient.ListToolsAsync();
 
-        // Assert - Should have our three tools
+        // Assert - Should have our four tools
         Assert.NotNull(tools);
         Assert.Contains(tools, t => t.Name == "SeqSearch");
         Assert.Contains(tools, t => t.Name == "SeqWaitForEvents");
         Assert.Contains(tools, t => t.Name == "SignalList");
-        Assert.Equal(3, tools.Count);
+        Assert.Contains(tools, t => t.Name == "SeqConvertFilter");
+        Assert.Equal(4, tools.Count);
+    }
+
+    [Theory]
+    // Bareword and invalid syntax fall back to text-match
+    [InlineData("error", "\"error\"", true)]
+    [InlineData("error timeout", "\"error timeout\"", true)]
+    // Already-strict filter expressions pass through unchanged
+    [InlineData("@Level = 'Error'", "@Level = 'Error'", false)]
+    [InlineData("Application = 'foo'", "Application = 'foo'", false)]
+    // Fuzzy-but-valid expression gets normalized (== becomes =)
+    [InlineData("User=='alice'", "User = 'alice'", false)]
+    public async Task SeqConvertFilter_ReturnsExpectedResult(string fuzzyFilter, string expectedStrict, bool expectedMatchedAsText)
+    {
+        var result = await _mcpClient!.CallToolAsync(
+            "SeqConvertFilter",
+            new Dictionary<string, object?>
+            {
+                ["fuzzyFilter"] = fuzzyFilter
+            });
+
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any());
+        Assert.False(result.IsError);
+
+        var contentJson = JsonSerializer.Serialize(result.Content.First());
+        using var outer = JsonDocument.Parse(contentJson);
+        var innerText = outer.RootElement.GetProperty("text").GetString();
+        Assert.NotNull(innerText);
+        using var inner = JsonDocument.Parse(innerText);
+
+        Assert.Equal(expectedStrict, inner.RootElement.GetProperty("strictExpression").GetString());
+        Assert.Equal(expectedMatchedAsText, inner.RootElement.GetProperty("matchedAsText").GetBoolean());
+
+        var reason = inner.RootElement.GetProperty("reasonIfMatchedAsText").GetString();
+        Assert.Equal(expectedMatchedAsText, !string.IsNullOrEmpty(reason));
     }
 
     protected async Task SeqSearch_WithDateRange_ReturnsFilteredEvents_Core()
