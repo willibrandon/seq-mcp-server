@@ -425,21 +425,21 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
 
     protected async Task SeqSearch_WithAsteriskFilter_NormalizesToEmptyString_Core()
     {
+        var marker = $"AsteriskTest{Guid.NewGuid():N}";
+        await WriteTestEventAsync("Asterisk fixture event", marker, true);
+
         var result = await McpClient.CallToolAsync(
             "SeqSearch",
             new Dictionary<string, object?>
             {
                 ["filter"] = "*",
-                ["count"] = 5
+                ["count"] = 100
             });
 
         Assert.NotNull(result);
-        Assert.NotNull(result.Content);
-        if (result.IsError)
-        {
-            var errorJson = JsonSerializer.Serialize(result.Content.First());
-            Assert.True(errorJson.Contains("Syntax error") || errorJson.Contains("Invalid filter"));
-        }
+        Assert.False(result.IsError, "Expected '*' to be normalized to all-events, not return a filter syntax error");
+        Assert.True(GetEventCount(result) > 0, "Expected at least one event when filter normalizes to all-events");
+        Assert.Contains(marker, GetInnerText(result));
     }
 
     protected async Task SeqSearch_WithInvalidFilterSyntax_ReturnsHelpfulError_Core()
