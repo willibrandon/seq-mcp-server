@@ -288,21 +288,46 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
 
     protected async Task SeqSearch_WithDateRange_ReturnsFilteredEvents_Core()
     {
-        var fromDate = DateTime.UtcNow.AddDays(-7).ToString("o");
-        var toDate = DateTime.UtcNow.ToString("o");
+        var marker = $"DateRangeTest{Guid.NewGuid():N}";
+        var fromDate = DateTime.UtcNow.AddMinutes(-1).ToString("o");
 
-        var result = await McpClient.CallToolAsync(
+        await WriteTestEventAsync("Date range fixture event", marker, true);
+
+        var toDate = DateTime.UtcNow.AddMinutes(1).ToString("o");
+
+        // Range bracketing the seeded event - should return it
+        var inRangeResult = await McpClient.CallToolAsync(
             "SeqSearch",
             new Dictionary<string, object?>
             {
-                ["filter"] = "*",
+                ["filter"] = $"{marker} = true",
                 ["count"] = 10,
                 ["fromDateUtc"] = fromDate,
                 ["toDateUtc"] = toDate
             });
 
-        Assert.NotNull(result);
-        Assert.NotNull(result.Content);
+        Assert.NotNull(inRangeResult);
+        Assert.False(inRangeResult.IsError, "Expected in-range search to succeed");
+        Assert.True(GetEventCount(inRangeResult) > 0, "Expected at least one event in the bracketing range");
+        Assert.Contains(marker, GetInnerText(inRangeResult));
+
+        // Range entirely in the future - should return nothing matching the marker
+        var futureFrom = DateTime.UtcNow.AddHours(1).ToString("o");
+        var futureTo = DateTime.UtcNow.AddHours(2).ToString("o");
+
+        var outOfRangeResult = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = $"{marker} = true",
+                ["count"] = 10,
+                ["fromDateUtc"] = futureFrom,
+                ["toDateUtc"] = futureTo
+            });
+
+        Assert.NotNull(outOfRangeResult);
+        Assert.False(outOfRangeResult.IsError, "Expected out-of-range search to succeed");
+        Assert.Equal(0, GetEventCount(outOfRangeResult));
     }
 
     protected async Task SeqSearch_WithTimeout_ReturnsBeforeTimeout_Core()
@@ -452,6 +477,44 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         using var content = new StringContent(clef, System.Text.Encoding.UTF8, "application/vnd.serilog.clef");
         using var response = await httpClient.PostAsync($"{_seqUrl}/api/events/raw?clef", content);
         response.EnsureSuccessStatusCode();
+    }
+
+    private static string GetInnerText(ModelContextProtocol.Protocol.CallToolResult result)
+    {
+        if (!result.Content.Any()) return string.Empty;
+        var contentJson = JsonSerializer.Serialize(result.Content.First());
+        using var outer = JsonDocument.Parse(contentJson);
+        if (!outer.RootElement.TryGetProperty("text", out var textEl)) return string.Empty;
+        return textEl.GetString() ?? string.Empty;
+    }
+
+    private static int GetEventCount(ModelContextProtocol.Protocol.CallToolResult result)
+    {
+        var innerText = GetInnerText(result);
+        if (string.IsNullOrEmpty(innerText)) return 0;
+        using var inner = JsonDocument.Parse(innerText);
+        return inner.RootElement.ValueKind == JsonValueKind.Array
+            ? inner.RootElement.GetArrayLength()
+            : 0;
+    }
+
+    private static List<string> GetEventIds(ModelContextProtocol.Protocol.CallToolResult result)
+    {
+        var innerText = GetInnerText(result);
+        if (string.IsNullOrEmpty(innerText)) return [];
+        using var inner = JsonDocument.Parse(innerText);
+        if (inner.RootElement.ValueKind != JsonValueKind.Array) return [];
+
+        var ids = new List<string>();
+        foreach (var evt in inner.RootElement.EnumerateArray())
+        {
+            if (evt.TryGetProperty("id", out var idEl) || evt.TryGetProperty("Id", out idEl))
+            {
+                var id = idEl.GetString();
+                if (!string.IsNullOrEmpty(id)) ids.Add(id);
+            }
+        }
+        return ids;
     }
 }
 
