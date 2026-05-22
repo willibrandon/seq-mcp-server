@@ -40,7 +40,7 @@ public static class SeqTools
     /// Search historical events in Seq with the specified filter.
     /// </summary>
     /// <param name="fac">Factory for creating Seq connections</param>
-    /// <param name="filter">Seq filter expression (e.g., "@Level = 'Error'"). Note: Use fromDateUtc/toDateUtc parameters for date filtering instead of @Timestamp in the filter expression for better performance.</param>
+    /// <param name="filter">Seq filter expression (e.g., "@Level = 'Error'"). Pass an empty string (the default) or "*" to return all events. Use fromDateUtc/toDateUtc for date filtering instead of @Timestamp in the filter expression for better performance.</param>
     /// <param name="count">Maximum number of events to return (1-1000)</param>
     /// <param name="signalId">Optional signal ID to filter events (use SignalList to find available signal IDs)</param>
     /// <param name="fromDateUtc">Optional earliest date/time (ISO 8601 format, e.g., '2024-01-01T00:00:00Z'). Use this instead of @Timestamp in filter for better performance.</param>
@@ -50,10 +50,10 @@ public static class SeqTools
     /// <param name="workspace">Optional workspace identifier for multi-tenant scenarios</param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>List of matching events</returns>
-    [McpServerTool, Description("Search Seq events with filters, date ranges, signals, pagination, and optional timeout. For date filtering, use fromDateUtc/toDateUtc parameters instead of @Timestamp in the filter expression. For pagination, use afterId with the last event ID from previous results.")]
+    [McpServerTool, Description("Search Seq events with filters, date ranges, signals, pagination, and optional timeout. Pass an empty filter (the default) or \"*\" to return all events. For date filtering, use fromDateUtc/toDateUtc parameters instead of @Timestamp in the filter expression. For pagination, use afterId with the last event ID from previous results.")]
     public static async Task<List<EventEntity>> SeqSearch(
         SeqConnectionFactory fac,
-        [Required] string filter,
+        string filter = "",
         [Range(1, 1000)] int count = 100,
         string? signalId = null,
         string? fromDateUtc = null,
