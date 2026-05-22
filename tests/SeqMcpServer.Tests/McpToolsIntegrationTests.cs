@@ -417,9 +417,10 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         Assert.NotNull(firstResult);
         Assert.False(firstResult.IsError, "Expected first-page search to succeed");
         var firstIds = GetEventIds(firstResult);
+        // Strict count assumes all 10 seeded events are indexed; soften to >= 2 if this flakes on slow runners.
         Assert.Equal(pageSize, firstIds.Count);
 
-        // Second page - use the last (oldest) event ID from page 1 as the cursor
+        // .Last() = oldest in page 1; .First() would re-include page 1 events because afterId is exclusive + newest-first.
         var afterId = firstIds.Last();
 
         var secondResult = await McpClient.CallToolAsync(
