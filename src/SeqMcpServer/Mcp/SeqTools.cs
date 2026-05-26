@@ -26,19 +26,40 @@ public sealed record SeqConvertFilterResult(
 public static class SeqTools
 {
     /// <summary>
+    /// Normalize common filter patterns to Seq's expected format.
+    /// </summary>
+    private static string NormalizeFilter(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter) || filter.Trim() == "*")
+        {
+            return string.Empty; // Empty string means "all events" in Seq
+        }
+        return filter;
+    }
+    /// <summary>
     /// Search historical events in Seq with the specified filter.
     /// </summary>
     /// <param name="fac">Factory for creating Seq connections</param>
-    /// <param name="filter">Seq filter expression (e.g., "@Level = 'Error'")</param>
+    /// <param name="filter">Seq filter expression (e.g., "@Level = 'Error'"). Pass an empty string (the default) or "*" to return all events. Use fromDateUtc/toDateUtc for date filtering instead of @Timestamp in the filter expression for better performance.</param>
     /// <param name="count">Maximum number of events to return (1-1000)</param>
+    /// <param name="signalId">Optional signal ID to filter events (use SignalList to find available signal IDs)</param>
+    /// <param name="fromDateUtc">Optional earliest date/time (ISO 8601 format, e.g., '2024-01-01T00:00:00Z'). Use this instead of @Timestamp in filter for better performance.</param>
+    /// <param name="toDateUtc">Optional latest date/time (ISO 8601 format, e.g., '2024-01-31T23:59:59Z'). Use this instead of @Timestamp in filter for better performance.</param>
+    /// <param name="afterId">Optional event ID to search after (exclusive). Use for pagination - pass the ID of the last event from the previous search to get the next batch.</param>
+    /// <param name="timeoutSeconds">Optional timeout in seconds (1-300). If not specified, uses the default cancellation token.</param>
     /// <param name="workspace">Optional workspace identifier for multi-tenant scenarios</param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>List of matching events</returns>
-    [McpServerTool, Description("Search Seq events with filters, returning up to the specified count")]
+    [McpServerTool, Description("Search Seq events with filters, date ranges, signals, pagination, and optional timeout. Pass an empty filter (the default) or \"*\" to return all events. For date filtering, use fromDateUtc/toDateUtc parameters instead of @Timestamp in the filter expression. For pagination, use afterId with the last event ID from previous results.")]
     public static async Task<List<EventEntity>> SeqSearch(
         SeqConnectionFactory fac,
-        [Required] string filter,
+        string filter = "",
         [Range(1, 1000)] int count = 100,
+        string? signalId = null,
+        string? fromDateUtc = null,
+        string? toDateUtc = null,
+        string? afterId = null,
+        [Range(1, 300)] int? timeoutSeconds = null,
         string? workspace = null,
         CancellationToken ct = default)
     {
@@ -47,48 +68,112 @@ public static class SeqTools
             var conn = fac.Create(workspace);
             var events = new List<EventEntity>();
 
-            var hasScanLink = await SeqCapabilities.SupportsScanAsync(conn, ct);
+            // Normalize filter (e.g., "*" becomes empty string for "all events")
+            filter = NormalizeFilter(filter);
 
-            if (hasScanLink)
+            // Parse date parameters if provided
+            DateTime? fromDate = null;
+            DateTime? toDate = null;
+
+            if (!string.IsNullOrEmpty(fromDateUtc))
             {
-                await foreach (var evt in conn.Events.EnumerateAsync(
-                    filter: filter,
-                    count: count,
-                    render: true,
-                    cancellationToken: ct).WithCancellation(ct))
+                if (!DateTime.TryParse(fromDateUtc, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
                 {
-                    events.Add(evt);
+                    throw new ArgumentException($"Invalid fromDateUtc format: {fromDateUtc}. Use ISO 8601 format (e.g., '2024-01-01T00:00:00Z')");
                 }
-            }
-            else
-            {
-                await foreach (var evt in conn.Events.PagedEnumerateAsync(
-                    unsavedSignal: null,
-                    signal: null,
-                    filter: filter,
-                    count: count,
-                    startAtId: null,
-                    afterId: null,
-                    render: true,
-                    fromDateUtc: null,
-                    toDateUtc: null,
-                    shortCircuitAfter: null,
-                    permalinkId: null,
-                    variables: null,
-                    background: false,
-                    trace: false,
-                    cancellationToken: ct).WithCancellation(ct))
-                {
-                    events.Add(evt);
-                }
+                fromDate = parsed.ToUniversalTime();
             }
 
-            return events;
+            if (!string.IsNullOrEmpty(toDateUtc))
+            {
+                if (!DateTime.TryParse(toDateUtc, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+                {
+                    throw new ArgumentException($"Invalid toDateUtc format: {toDateUtc}. Use ISO 8601 format (e.g., '2024-01-31T23:59:59Z')");
+                }
+                toDate = parsed.ToUniversalTime();
+            }
+
+            // Fetch signal entity if signal ID is provided
+            SignalEntity? signalEntity = null;
+            if (!string.IsNullOrEmpty(signalId))
+            {
+                signalEntity = await conn.Signals.FindAsync(signalId, cancellationToken: ct);
+                if (signalEntity == null)
+                {
+                    throw new ArgumentException($"Signal with ID '{signalId}' not found. Use SignalList to find available signals.");
+                }
+            }
+
+            // Create timeout cancellation token if specified
+            CancellationTokenSource? timeoutCts = null;
+            CancellationTokenSource? combinedCts = null;
+
+            try
+            {
+                if (timeoutSeconds.HasValue)
+                {
+                    timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds.Value));
+                    combinedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+                    ct = combinedCts.Token;
+                }
+
+                var hasScanLink = await SeqCapabilities.SupportsScanAsync(conn, ct);
+
+                if (hasScanLink)
+                {
+                    await foreach (var evt in conn.Events.EnumerateAsync(
+                        unsavedSignal: signalEntity,
+                        filter: filter,
+                        count: count,
+                        afterId: afterId,
+                        fromDateUtc: fromDate,
+                        toDateUtc: toDate,
+                        render: true,
+                        cancellationToken: ct).WithCancellation(ct))
+                    {
+                        events.Add(evt);
+                    }
+                }
+                else
+                {
+                    await foreach (var evt in conn.Events.PagedEnumerateAsync(
+                        unsavedSignal: signalEntity,
+                        signal: null,
+                        filter: filter,
+                        count: count,
+                        startAtId: null,
+                        afterId: afterId,
+                        render: true,
+                        fromDateUtc: fromDate,
+                        toDateUtc: toDate,
+                        shortCircuitAfter: null,
+                        permalinkId: null,
+                        variables: null,
+                        background: false,
+                        trace: false,
+                        cancellationToken: ct).WithCancellation(ct))
+                    {
+                        events.Add(evt);
+                    }
+                }
+
+                return events;
+            }
+            finally
+            {
+                combinedCts?.Dispose();
+                timeoutCts?.Dispose();
+            }
         }
         catch (OperationCanceledException)
         {
             // Return empty list on cancellation
             return [];
+        }
+        catch (Seq.Api.Client.SeqApiException ex) when (ex.Message.Contains("Syntax error"))
+        {
+            // Provide a more helpful error message for filter syntax errors
+            throw new ArgumentException($"Invalid filter expression: {ex.Message}. Use an empty string \"\" for all events, or a valid Seq filter expression like \"@Level = 'Error'\".", ex);
         }
         catch (Exception)
         {

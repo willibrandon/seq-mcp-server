@@ -78,17 +78,29 @@ dotnet publish -c Release -r win-x64 -p:PublishSingleFile=true
 
 The following tools are available through the MCP protocol:
 
-- **`SeqSearch`** - Search Seq events with filters
-  - Parameters: 
+- **`SeqSearch`** - Search Seq events with filters, date ranges, signals, and pagination
+  - Parameters:
     - `filter` (required): Seq filter expression (use empty string `""` for all events)
-    - `count`: Number of events to return (default: 100)
+    - `count`: Number of events to return (default: 100, max: 1000)
+    - `signalId` (optional): Signal ID to filter events (use `SignalList` to find IDs)
+    - `fromDateUtc` (optional): Earliest date/time (ISO 8601, e.g., `"2024-01-01T00:00:00Z"`)
+    - `toDateUtc` (optional): Latest date/time (ISO 8601, e.g., `"2024-01-31T23:59:59Z"`)
+    - `afterId` (optional): Event ID to search after (exclusive) - use for pagination
+    - `timeoutSeconds` (optional): Timeout in seconds (1-300)
     - `workspace` (optional): Specific workspace to query
-  - Returns: List of matching events
+  - Returns: List of matching events (ordered least to most recent)
+  - **Note:** For date filtering, use `fromDateUtc`/`toDateUtc` parameters instead of `@Timestamp` in the filter expression for better performance
+  - **Pagination:** To fetch more than 1000 events, use `afterId` with the ID of the last event from the previous search
   - Example filters:
     - `""` - all events
     - `"error"` - events containing "error"
     - `@Level = "Error"` - error level events
     - `Application = "MyApp"` - events from specific application
+  - Example with date range:
+    - `filter: "@Level = 'Error'", fromDateUtc: "2024-01-01T00:00:00Z", toDateUtc: "2024-01-31T23:59:59Z"`
+  - Example with pagination:
+    - First call: `filter: "", count: 1000` → returns events with IDs
+    - Second call: `filter: "", count: 1000, afterId: "event-<last-id>"` → returns next batch
 
 - **`SeqWaitForEvents`** - Wait for and capture live events from Seq (5-second timeout)
   - Parameters: 

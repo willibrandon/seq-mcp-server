@@ -286,6 +286,173 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         Assert.Equal(expectedMatchedAsText, !string.IsNullOrEmpty(reason));
     }
 
+    protected async Task SeqSearch_WithDateRange_ReturnsFilteredEvents_Core()
+    {
+        var marker = $"DateRangeTest{Guid.NewGuid():N}";
+        var fromDate = DateTime.UtcNow.AddMinutes(-1).ToString("o");
+
+        await WriteTestEventAsync("Date range fixture event", marker, true);
+
+        var toDate = DateTime.UtcNow.AddMinutes(1).ToString("o");
+
+        // Range bracketing the seeded event - should return it
+        var inRangeResult = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = $"{marker} = true",
+                ["count"] = 10,
+                ["fromDateUtc"] = fromDate,
+                ["toDateUtc"] = toDate
+            });
+
+        Assert.NotNull(inRangeResult);
+        Assert.False(inRangeResult.IsError, "Expected in-range search to succeed");
+        Assert.True(GetEventCount(inRangeResult) > 0, "Expected at least one event in the bracketing range");
+        Assert.Contains(marker, GetInnerText(inRangeResult));
+
+        // Range entirely in the future - should return nothing matching the marker
+        var futureFrom = DateTime.UtcNow.AddHours(1).ToString("o");
+        var futureTo = DateTime.UtcNow.AddHours(2).ToString("o");
+
+        var outOfRangeResult = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = $"{marker} = true",
+                ["count"] = 10,
+                ["fromDateUtc"] = futureFrom,
+                ["toDateUtc"] = futureTo
+            });
+
+        Assert.NotNull(outOfRangeResult);
+        Assert.False(outOfRangeResult.IsError, "Expected out-of-range search to succeed");
+        Assert.Equal(0, GetEventCount(outOfRangeResult));
+    }
+
+    protected async Task SeqSearch_WithInvalidDateFormat_ReturnsError_Core()
+    {
+        var result = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 10,
+                ["fromDateUtc"] = "not-a-date"
+            });
+
+        Assert.NotNull(result);
+        Assert.True(result.IsError, "Expected IsError to be true for invalid date format");
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any(), "Expected error content to be present");
+    }
+
+    protected async Task SeqSearch_WithInvalidSignalId_ReturnsError_Core()
+    {
+        var result = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 10,
+                ["signalId"] = "signal-nonexistent-12345"
+            });
+
+        Assert.NotNull(result);
+        Assert.True(result.IsError, "Expected IsError to be true for invalid signal ID");
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any(), "Expected error content to be present");
+    }
+
+    protected async Task SeqSearch_WithAfterId_ReturnsPaginatedResults_Core()
+    {
+        var marker = $"PaginationTest{Guid.NewGuid():N}";
+        const int totalEvents = 10;
+        const int pageSize = 5;
+
+        for (var i = 0; i < totalEvents; i++)
+        {
+            await WriteTestEventAsync($"Pagination fixture event {i}", marker, true);
+        }
+
+        // First page
+        var firstResult = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = $"{marker} = true",
+                ["count"] = pageSize
+            });
+
+        Assert.NotNull(firstResult);
+        Assert.False(firstResult.IsError, "Expected first-page search to succeed");
+        var firstIds = GetEventIds(firstResult);
+        // Strict count assumes all 10 seeded events are indexed; soften to >= 2 if this flakes on slow runners.
+        Assert.Equal(pageSize, firstIds.Count);
+
+        // .Last() = oldest in page 1; .First() would re-include page 1 events because afterId is exclusive + newest-first.
+        var afterId = firstIds.Last();
+
+        var secondResult = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = $"{marker} = true",
+                ["count"] = pageSize,
+                ["afterId"] = afterId
+            });
+
+        Assert.NotNull(secondResult);
+        Assert.False(secondResult.IsError, "Expected second-page search to succeed");
+        var secondIds = GetEventIds(secondResult);
+        Assert.NotEmpty(secondIds);
+
+        // Pagination must return events not seen on page 1
+        Assert.Empty(firstIds.Intersect(secondIds));
+    }
+
+    protected async Task SeqSearch_WithAsteriskFilter_NormalizesToEmptyString_Core()
+    {
+        var marker = $"AsteriskTest{Guid.NewGuid():N}";
+        await WriteTestEventAsync("Asterisk fixture event", marker, true);
+
+        var result = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "*",
+                ["count"] = 100
+            });
+
+        Assert.NotNull(result);
+        Assert.False(result.IsError, "Expected '*' to be normalized to all-events, not return a filter syntax error");
+        Assert.True(GetEventCount(result) > 0, "Expected at least one event when filter normalizes to all-events");
+        Assert.Contains(marker, GetInnerText(result));
+    }
+
+    protected async Task SeqSearch_WithInvalidFilterSyntax_ReturnsHelpfulError_Core()
+    {
+        var result = await McpClient.CallToolAsync(
+            "SeqSearch",
+            new Dictionary<string, object?>
+            {
+                ["filter"] = "@Level = = 'Error'",
+                ["count"] = 5
+            });
+
+        Assert.NotNull(result);
+        Assert.True(result.IsError);
+        Assert.NotNull(result.Content);
+        Assert.True(result.Content.Any());
+
+        var errorJson = JsonSerializer.Serialize(result.Content.First());
+        Assert.True(
+            errorJson.Contains("Invalid filter expression") ||
+            errorJson.Contains("Syntax error") ||
+            errorJson.Contains("An error occurred"),
+            "Error message should indicate filter syntax problem");
+    }
+
     private async Task WriteTestEventAsync(string messageTemplate, string propertyName, bool propertyValue)
     {
         ArgumentNullException.ThrowIfNull(_seqUrl);
@@ -298,6 +465,44 @@ public abstract class McpToolsIntegrationTestsBase : IAsyncLifetime
         using var content = new StringContent(clef, System.Text.Encoding.UTF8, "application/vnd.serilog.clef");
         using var response = await httpClient.PostAsync($"{_seqUrl}/api/events/raw?clef", content);
         response.EnsureSuccessStatusCode();
+    }
+
+    private static string GetInnerText(ModelContextProtocol.Protocol.CallToolResult result)
+    {
+        if (!result.Content.Any()) return string.Empty;
+        var contentJson = JsonSerializer.Serialize(result.Content.First());
+        using var outer = JsonDocument.Parse(contentJson);
+        if (!outer.RootElement.TryGetProperty("text", out var textEl)) return string.Empty;
+        return textEl.GetString() ?? string.Empty;
+    }
+
+    private static int GetEventCount(ModelContextProtocol.Protocol.CallToolResult result)
+    {
+        var innerText = GetInnerText(result);
+        if (string.IsNullOrEmpty(innerText)) return 0;
+        using var inner = JsonDocument.Parse(innerText);
+        return inner.RootElement.ValueKind == JsonValueKind.Array
+            ? inner.RootElement.GetArrayLength()
+            : 0;
+    }
+
+    private static List<string> GetEventIds(ModelContextProtocol.Protocol.CallToolResult result)
+    {
+        var innerText = GetInnerText(result);
+        if (string.IsNullOrEmpty(innerText)) return [];
+        using var inner = JsonDocument.Parse(innerText);
+        if (inner.RootElement.ValueKind != JsonValueKind.Array) return [];
+
+        var ids = new List<string>();
+        foreach (var evt in inner.RootElement.EnumerateArray())
+        {
+            if (evt.TryGetProperty("id", out var idEl) || evt.TryGetProperty("Id", out idEl))
+            {
+                var id = idEl.GetString();
+                if (!string.IsNullOrEmpty(id)) ids.Add(id);
+            }
+        }
+        return ids;
     }
 }
 
@@ -351,4 +556,28 @@ public class McpToolsIntegrationModernSeqTests : McpToolsIntegrationTestsBase
         await AssertScanLinkAvailabilityAsync(shouldExist: true);
         await SeqSearch_WithPropertyFilter_ReturnsEvents("CompatibilityScan");
     }
+
+    [Fact]
+    public async Task SeqSearch_WithDateRange_ReturnsFilteredEvents() =>
+        await SeqSearch_WithDateRange_ReturnsFilteredEvents_Core();
+
+    [Fact]
+    public async Task SeqSearch_WithInvalidDateFormat_ReturnsError() =>
+        await SeqSearch_WithInvalidDateFormat_ReturnsError_Core();
+
+    [Fact]
+    public async Task SeqSearch_WithInvalidSignalId_ReturnsError() =>
+        await SeqSearch_WithInvalidSignalId_ReturnsError_Core();
+
+    [Fact]
+    public async Task SeqSearch_WithAfterId_ReturnsPaginatedResults() =>
+        await SeqSearch_WithAfterId_ReturnsPaginatedResults_Core();
+
+    [Fact]
+    public async Task SeqSearch_WithAsteriskFilter_NormalizesToEmptyString() =>
+        await SeqSearch_WithAsteriskFilter_NormalizesToEmptyString_Core();
+
+    [Fact]
+    public async Task SeqSearch_WithInvalidFilterSyntax_ReturnsHelpfulError() =>
+        await SeqSearch_WithInvalidFilterSyntax_ReturnsHelpfulError_Core();
 }
